@@ -1,11 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"time"
 )
+
+type Mensagem struct {
+	Tipo        string `json:"tipo"`
+	Dispositivo string `json:"dispositivo"`
+	Sala        string `json:"sala"`
+	Valor       string `json:"valor,omitempty"`
+	Evento      string `json:"evento,omitempty"`
+}
 
 func main() {
 	addrEnv := os.Getenv("SERVER_ADDR")
@@ -54,12 +63,22 @@ func main() {
 			variacao = 0.33
 		}
 
-		// Formato do pacote consumido pelo integrador: TIPO|ID|VALOR.
-		mensagem := fmt.Sprintf("%s|%s|%.2f", sensorTipo, sensorID, temperaturaAtual)
-		fmt.Printf("Enviando -> %s\n", mensagem)
+		mensagem := Mensagem{
+			Tipo:        "TLM",
+			Dispositivo: sensorTipo,
+			Sala:        sensorID,
+			Valor:       fmt.Sprintf("%.2f", temperaturaAtual),
+		}
+		payload, errMarshal := json.Marshal(mensagem)
+		if errMarshal != nil {
+			fmt.Printf("⚠️ Erro ao serializar telemetria JSON: %v\n", errMarshal)
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		fmt.Printf("Enviando JSON -> %s\n", payload)
 
 		// UDP nao confirma entrega; o sensor apenas envia e segue o ciclo.
-		_, err := conn.Write([]byte(mensagem))
+		_, err := conn.Write(payload)
 		if err != nil {
 			fmt.Printf("⚠️ Erro de rede: %v\n", err)
 		}

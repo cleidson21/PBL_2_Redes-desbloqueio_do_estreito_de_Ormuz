@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -9,6 +10,44 @@ import (
 	"strings"
 	"time"
 )
+
+type Mensagem struct {
+	Tipo        string `json:"tipo"`
+	Origem      string `json:"origem,omitempty"`
+	Dispositivo string `json:"dispositivo,omitempty"`
+	Sala        string `json:"sala,omitempty"`
+	Destino     string `json:"destino,omitempty"`
+	Comando     string `json:"comando,omitempty"`
+	Evento      string `json:"evento,omitempty"`
+	Valor       string `json:"valor,omitempty"`
+	Modo        string `json:"modo,omitempty"`
+	Detalhe     string `json:"detalhe,omitempty"`
+}
+
+func enviarMensagem(conn net.Conn, msg Mensagem) error {
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(conn, "%s\n", payload)
+	return err
+}
+
+func extrairComando(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	var msg Mensagem
+	if err := json.Unmarshal([]byte(raw), &msg); err == nil {
+		if strings.ToUpper(strings.TrimSpace(msg.Tipo)) == "CMD" {
+			return strings.TrimSpace(msg.Comando)
+		}
+	}
+
+	return raw
+}
 
 func habilitarKeepAlive(conn net.Conn) {
 	tcpConn, ok := conn.(*net.TCPConn)
@@ -47,8 +86,16 @@ func main() {
 
 		fmt.Printf("⚙️  [%s] %s Iniciado! Conectado em %s\n", atuadorID, tipoAtuador, integradorAddr)
 
-		// Registra o atuador no gateway com o formato REG|TIPO|ID.
-		fmt.Fprintf(conn, "REG|%s|%s\n", tipoAtuador, atuadorID)
+		if err := enviarMensagem(conn, Mensagem{
+			Tipo:        "REG",
+			Dispositivo: tipoAtuador,
+			Sala:        atuadorID,
+		}); err != nil {
+			fmt.Printf("⚠️ Falha ao registrar atuador: %v\n", err)
+			conn.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
 
 		estadoAtual := "DESLIGADO"
 		done := make(chan bool)
@@ -57,7 +104,12 @@ func main() {
 			for {
 				select {
 				case <-time.After(10 * time.Second):
-					fmt.Fprintf(conn, "ACK|%s|%s|%s\n", tipoAtuador, atuadorID, estadoAtual)
+					_ = enviarMensagem(conn, Mensagem{
+						Tipo:        "ACK",
+						Dispositivo: tipoAtuador,
+						Sala:        atuadorID,
+						Valor:       estadoAtual,
+					})
 				case <-done:
 					log.Printf("Heartbeat stopped for %s\n", atuadorID)
 					return
@@ -67,7 +119,10 @@ func main() {
 
 		scanner := bufio.NewScanner(conn)
 		for scanner.Scan() {
-			comando := strings.TrimSpace(scanner.Text())
+			comando := extrairComando(scanner.Text())
+			if comando == "" {
+				continue
+			}
 			partes := strings.Split(comando, " ")
 			acao := partes[0]
 
@@ -75,15 +130,30 @@ func main() {
 			case "LIGAR":
 				fmt.Printf("❄️ [%s] LIGANDO compressor do Ar...\n", atuadorID)
 				estadoAtual = "LIGADO"
-				fmt.Fprintf(conn, "ACK|%s|%s|LIGADO\n", tipoAtuador, atuadorID)
+				_ = enviarMensagem(conn, Mensagem{
+					Tipo:        "ACK",
+					Dispositivo: tipoAtuador,
+					Sala:        atuadorID,
+					Valor:       "LIGADO",
+				})
 			case "DESLIGAR":
 				fmt.Printf("🛑 [%s] DESLIGANDO Ar-Condicionado...\n", atuadorID)
 				estadoAtual = "DESLIGADO"
-				fmt.Fprintf(conn, "ACK|%s|%s|DESLIGADO\n", tipoAtuador, atuadorID)
+				_ = enviarMensagem(conn, Mensagem{
+					Tipo:        "ACK",
+					Dispositivo: tipoAtuador,
+					Sala:        atuadorID,
+					Valor:       "DESLIGADO",
+				})
 			case "SET_TEMP":
 				if len(partes) > 1 {
 					fmt.Printf("🌡️ [%s] Ajustando termostato para %s°C\n", atuadorID, partes[1])
-					fmt.Fprintf(conn, "ACK|%s|%s|TEMP_SETADA_%s\n", tipoAtuador, atuadorID, partes[1])
+					_ = enviarMensagem(conn, Mensagem{
+						Tipo:        "ACK",
+						Dispositivo: tipoAtuador,
+						Sala:        atuadorID,
+						Valor:       fmt.Sprintf("TEMP_SETADA_%s", partes[1]),
+					})
 				}
 			default:
 				log.Printf("Comando desconhecido para AC: %s\n", comando)

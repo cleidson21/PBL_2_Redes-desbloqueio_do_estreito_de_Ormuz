@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -11,6 +12,19 @@ import (
 	"sync"
 	"time"
 )
+
+type Mensagem struct {
+	Tipo        string `json:"tipo"`
+	Origem      string `json:"origem,omitempty"`
+	Dispositivo string `json:"dispositivo,omitempty"`
+	Sala        string `json:"sala,omitempty"`
+	Destino     string `json:"destino,omitempty"`
+	Comando     string `json:"comando,omitempty"`
+	Evento      string `json:"evento,omitempty"`
+	Valor       string `json:"valor,omitempty"`
+	Modo        string `json:"modo,omitempty"`
+	Detalhe     string `json:"detalhe,omitempty"`
+}
 
 func habilitarKeepAlive(conn net.Conn) {
 	tcpConn, ok := conn.(*net.TCPConn)
@@ -84,13 +98,18 @@ func descartarConexao(conn net.Conn) {
 	}
 }
 
-func enviarLinha(linha string) bool {
+func enviarMensagem(msg Mensagem) bool {
 	conn := getConexao()
 	if conn == nil {
 		return false
 	}
 
-	_, err := fmt.Fprintf(conn, "%s\n", linha)
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return false
+	}
+
+	_, err = fmt.Fprintf(conn, "%s\n", payload)
 	if err != nil {
 		descartarConexao(conn)
 		return false
@@ -171,10 +190,10 @@ func main() {
 				break
 			}
 
-			_, errSync := fmt.Fprintf(conn, "SYNC|%s|MANUAL\n", idSala)
-			_, errCmd := fmt.Fprintf(conn, "AC_%s|%s\n", idSala, acao)
+			errSync := enviarMensagem(Mensagem{Tipo: "SYNC", Sala: idSala, Modo: "MANUAL"})
+			errCmd := enviarMensagem(Mensagem{Tipo: "CMD", Destino: fmt.Sprintf("AC_%s", idSala), Comando: acao})
 
-			if errSync != nil || errCmd != nil {
+			if !errSync || !errCmd {
 				log.Println("⚠️ FALHA NA REDE: O Gateway caiu! Reiniciando cliente...")
 				descartarConexao(conn)
 				break
@@ -198,15 +217,14 @@ func main() {
 				break
 			}
 
-			var cmd string
+			var modo string
 			if statusAuto {
-				cmd = fmt.Sprintf("SYNC|%s|AUTO", idSala)
+				modo = "AUTO"
 			} else {
-				cmd = fmt.Sprintf("SYNC|%s|MANUAL", idSala)
+				modo = "MANUAL"
 			}
 
-			_, err := fmt.Fprintf(conn, "%s\n", cmd)
-			if err != nil {
+			if !enviarMensagem(Mensagem{Tipo: "SYNC", Sala: idSala, Modo: modo}) {
 				log.Println("⚠️ FALHA NA REDE: O Gateway caiu! Reiniciando cliente...")
 				descartarConexao(conn)
 				break
@@ -239,8 +257,7 @@ func main() {
 					break
 				}
 
-				_, errSend := fmt.Fprintf(conn, "AC_%s|SET_TEMP %.1f\n", idSala, tempVal)
-				if errSend != nil {
+				if !enviarMensagem(Mensagem{Tipo: "CMD", Destino: fmt.Sprintf("AC_%s", idSala), Comando: fmt.Sprintf("SET_TEMP %.1f", tempVal)}) {
 					log.Println("⚠️ FALHA NA REDE: O Gateway caiu! Reiniciando cliente...")
 					descartarConexao(conn)
 					break
@@ -265,8 +282,7 @@ func main() {
 				break
 			}
 
-			_, err := fmt.Fprintf(conn, "LED_%s|%s\n", idSala, acao)
-			if err != nil {
+			if !enviarMensagem(Mensagem{Tipo: "CMD", Destino: fmt.Sprintf("LED_%s", idSala), Comando: acao}) {
 				log.Println("⚠️ FALHA NA REDE: O Gateway caiu! Reiniciando cliente...")
 				descartarConexao(conn)
 				break
@@ -287,20 +303,21 @@ func ouvirRedeEProcessarLogica(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 
 	for scanner.Scan() {
-		mensagem := strings.TrimSpace(scanner.Text())
-		partes := strings.Split(mensagem, "|")
-
-		if len(partes) < 3 {
+		mensagemRaw := strings.TrimSpace(scanner.Text())
+		var msg Mensagem
+		if err := json.Unmarshal([]byte(mensagemRaw), &msg); err != nil {
+			continue
+		}
+		msg.Tipo = strings.ToUpper(strings.TrimSpace(msg.Tipo))
+		if msg.Tipo == "" {
 			continue
 		}
 
-		tipoMsg := partes[0]
-
 		mu.Lock()
 
-		if tipoMsg == "TLM" && partes[1] == "T" && len(partes) >= 4 {
-			idSala := partes[2]
-			tempAtual, _ := strconv.ParseFloat(partes[3], 64)
+		if msg.Tipo == "TLM" && msg.Dispositivo == "T" {
+			idSala := msg.Sala
+			tempAtual, _ := strconv.ParseFloat(msg.Valor, 64)
 
 			sala := getSalaSegura(idSala)
 			sala.TemSensorTemp = true
@@ -310,9 +327,9 @@ func ouvirRedeEProcessarLogica(conn net.Conn) {
 			avaliarModoAutomatico(idSala, sala)
 		}
 
-		if tipoMsg == "EVT" && len(partes) >= 4 {
-			idSala := partes[2]
-			evento := partes[3]
+		if msg.Tipo == "EVT" {
+			idSala := msg.Sala
+			evento := msg.Evento
 
 			sala := getSalaSegura(idSala)
 			sala.TemCatraca = true
@@ -320,10 +337,10 @@ func ouvirRedeEProcessarLogica(conn net.Conn) {
 			sala.UltimaLeituraCatraca = time.Now()
 		}
 
-		if tipoMsg == "ACK" && len(partes) >= 4 {
-			tipoAtuador := partes[1]
-			idSala := partes[2]
-			acao := partes[3]
+		if msg.Tipo == "ACK" {
+			tipoAtuador := strings.ToUpper(msg.Dispositivo)
+			idSala := msg.Sala
+			acao := msg.Valor
 
 			sala := getSalaSegura(idSala)
 
@@ -336,17 +353,17 @@ func ouvirRedeEProcessarLogica(conn net.Conn) {
 			}
 		}
 
-		if tipoMsg == "SYNC" && len(partes) >= 3 {
-			idSala := partes[1]
-			modo := partes[2]
+		if msg.Tipo == "SYNC" {
+			idSala := msg.Sala
+			modo := strings.ToUpper(msg.Modo)
 
 			sala := getSalaSegura(idSala)
 			sala.ModoAuto = (modo == "AUTO")
 		}
 
-		if tipoMsg == "ERRO" && len(partes) >= 3 {
-			origem := partes[1]
-			detalhe := partes[2]
+		if msg.Tipo == "ERRO" {
+			origem := msg.Origem
+			detalhe := msg.Detalhe
 
 			fmt.Printf("\n❌ [FALHA DE COMANDO - %s] %s\n", origem, detalhe)
 
@@ -367,7 +384,7 @@ func ouvirRedeEProcessarLogica(conn net.Conn) {
 
 					if sala.ModoAuto {
 						sala.ModoAuto = false
-						enviarLinha(fmt.Sprintf("SYNC|%s|MANUAL", idSala))
+						enviarMensagem(Mensagem{Tipo: "SYNC", Sala: idSala, Modo: "MANUAL"})
 						fmt.Printf("🛑 MODO AUTOMÁTICO da [%s] foi DESATIVADO na rede por segurança.\n", idSala)
 					}
 				}
@@ -415,11 +432,11 @@ func avaliarModoAutomatico(id string, sala *EstadoSala) {
 	limiteInferior := sala.TemperaturaAlvo - 1.0
 
 	if sala.TemperaturaAtual >= limiteSuperior && !sala.ArLigado {
-		enviarLinha(fmt.Sprintf("AC_%s|LIGAR", id))
+		enviarMensagem(Mensagem{Tipo: "CMD", Destino: fmt.Sprintf("AC_%s", id), Comando: "LIGAR"})
 	}
 
 	if sala.TemperaturaAtual <= limiteInferior && sala.ArLigado {
-		enviarLinha(fmt.Sprintf("AC_%s|DESLIGAR", id))
+		enviarMensagem(Mensagem{Tipo: "CMD", Destino: fmt.Sprintf("AC_%s", id), Comando: "DESLIGAR"})
 	}
 }
 

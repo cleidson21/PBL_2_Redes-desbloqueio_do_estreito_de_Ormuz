@@ -1,12 +1,21 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"time"
 )
+
+type Mensagem struct {
+	Tipo        string `json:"tipo"`
+	Dispositivo string `json:"dispositivo"`
+	Sala        string `json:"sala"`
+	Valor       string `json:"valor,omitempty"`
+	Evento      string `json:"evento,omitempty"`
+}
 
 func habilitarKeepAlive(conn net.Conn) {
 	tcpConn, ok := conn.(*net.TCPConn)
@@ -47,15 +56,27 @@ func main() {
 		fmt.Printf("🪪 Sensor [%s] tipo [%s] iniciado! Enviando leituras para %s via TCP.\n", sensorID, sensorTipo, addrEnv)
 
 		for {
-			// Sorteia uma leitura e monta o payload esperado pelo integrador.
+			// Sorteia uma leitura e monta o payload JSON esperado pelo integrador.
 			crachaLido := crachas[rand.Intn(len(crachas))]
 
-			mensagem := fmt.Sprintf("%s|%s|%s", sensorTipo, sensorID, crachaLido)
+			mensagem := Mensagem{
+				Tipo:        "EVT",
+				Dispositivo: sensorTipo,
+				Sala:        sensorID,
+				Evento:      crachaLido,
+			}
+			payload, errMarshal := json.Marshal(mensagem)
+			if errMarshal != nil {
+				fmt.Printf("⚠️ Falha ao serializar evento JSON: %v\n", errMarshal)
+				tempoEspera := time.Duration(rand.Intn(10)+5) * time.Second
+				time.Sleep(tempoEspera)
+				continue
+			}
 
-			fmt.Printf("Enviando leitura -> %s\n", mensagem)
+			fmt.Printf("Enviando leitura JSON -> %s\n", payload)
 
 			// TCP reutiliza a conexao aberta; se falhar, interrompe para reconectar.
-			if _, err := fmt.Fprintf(conn, "%s\n", mensagem); err != nil {
+			if _, err := fmt.Fprintf(conn, "%s\n", payload); err != nil {
 				fmt.Printf("⚠️ Falha ao enviar leitura: %v\n", err)
 				break
 			}
