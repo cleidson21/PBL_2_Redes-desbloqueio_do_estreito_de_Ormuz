@@ -66,27 +66,27 @@ func main() {
 		droneID = "DRONE_01"
 	}
 
-	integradorAddr := os.Getenv("INTEGRADOR_ADDR")
-	if integradorAddr == "" {
-		integradorAddr = "localhost:8082" // Porta do Broker do Setor
+	servidorAddr := os.Getenv("SERVER_ADDR")
+	if servidorAddr == "" {
+		servidorAddr = "localhost:8082" // Porta do servidor do setor
 	}
 
 	for {
-		conn, err := net.Dial("tcp", integradorAddr)
+		conn, err := net.Dial("tcp", servidorAddr)
 		if err != nil {
-			fmt.Printf("⚠️ Broker do setor offline. A tentar novamente em 5 segundos... (%v)\n", err)
+			fmt.Printf("⚠️ Servidor do setor offline. A tentar novamente em 5 segundos... (%v)\n", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		habilitarKeepAlive(conn)
 
-		fmt.Printf("🚁 [%s] Iniciado! Ligado ao Broker em %s\n", droneID, integradorAddr)
+		fmt.Printf("🚁 [%s] Iniciado! Ligado ao servidor em %s\n", droneID, servidorAddr)
 
 		// Regista o drone no Broker
 		if err := enviarMensagem(conn, Mensagem{
 			Tipo:      "REG",
 			Remetente: droneID,
-			Valor:     "DRONE", // Identifica que este cliente TCP é um Drone
+			Valor:     "DRONE", // Identifica que este agente TCP é um drone
 		}); err != nil {
 			fmt.Printf("⚠️ Falha ao registar o drone: %v\n", err)
 			conn.Close()

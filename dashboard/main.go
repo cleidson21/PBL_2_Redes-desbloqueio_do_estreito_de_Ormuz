@@ -31,9 +31,10 @@ type EstadoDrone struct {
 
 var (
 	// ESTADO DO DASHBOARD (Apenas Leitura/Exibição)
-	mu      sync.RWMutex
-	frota   = make(map[string]EstadoDrone)
-	alertas = make([]string, 0) // Histórico dos últimos eventos críticos
+	mu          sync.RWMutex
+	frota       = make(map[string]EstadoDrone)
+	alertas     = make([]string, 0) // Histórico dos últimos eventos críticos
+	telemetrias = make([]string, 0) // Últimas leituras recebidas do mar
 
 	connMu     sync.RWMutex
 	brokerConn net.Conn
@@ -120,9 +121,9 @@ func manterConexaoComBroker(addr string) {
 
 // INTERFACE COM O UTILIZADOR (CLI)
 func main() {
-	addrEnv := os.Getenv("INTEGRADOR_ADDR")
+	addrEnv := os.Getenv("SERVER_ADDR")
 	if addrEnv == "" {
-		addrEnv = "localhost:8083" // Porta de Clientes no Broker
+		addrEnv = "localhost:8083" // Porta do dashboard no servidor
 	}
 
 	go manterConexaoComBroker(addrEnv)
@@ -156,7 +157,7 @@ func main() {
 				break
 			}
 
-			// O Cliente pede um drone. Quem decide qual drone vai é a rede P2P!
+			// O operador pede um drone. Quem decide qual drone vai é a rede P2P.
 			sucesso := enviarMensagem(Mensagem{
 				Tipo:    "CMD",
 				Acao:    "REQUISICAO_MANUAL",
@@ -204,6 +205,14 @@ func ouvirRede(conn net.Conn) {
 			}
 		}
 
+		if msg.Tipo == "TLM" {
+			telemetriaTexto := fmt.Sprintf("[%s] Telemetria: %s", msg.Remetente, msg.Valor)
+			telemetrias = append(telemetrias, telemetriaTexto)
+			if len(telemetrias) > 5 {
+				telemetrias = telemetrias[1:]
+			}
+		}
+
 		// Se receber um evento crítico do mar
 		if msg.Tipo == "EVT" && msg.Acao == "ALERTA" {
 			alertaTexto := fmt.Sprintf("[%s] %s em %s", msg.Remetente, msg.Valor, msg.Posicao)
@@ -240,6 +249,15 @@ func imprimirPainel() {
 				icone = "❌"
 			}
 			fmt.Printf("%s [%s] -> Status: %s | Operando em: %s\n", icone, id, drone.Status, drone.Setor)
+		}
+	}
+
+	fmt.Println("\n📡 === ÚLTIMAS TELEMETRIAS ===")
+	if len(telemetrias) == 0 {
+		fmt.Println("Nenhuma telemetria recente.")
+	} else {
+		for i := len(telemetrias) - 1; i >= 0; i-- {
+			fmt.Printf("- %s\n", telemetrias[i])
 		}
 	}
 

@@ -7,6 +7,10 @@ RUN go build -o servidor main.go
 FROM alpine:latest
 WORKDIR /root/
 COPY --from=builder /app/servidor .
-# Expõe a porta UDP
+# Expõe as portas usadas pelo setor
 EXPOSE 8080/udp
+EXPOSE 8081/tcp
+EXPOSE 8082/tcp
+EXPOSE 8083/tcp
+EXPOSE 8084/tcp
 CMD ["./servidor"]

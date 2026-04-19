@@ -1,69 +1,56 @@
 services:
-  # 1. O ROTEADOR CENTRAL (Broker)
-  integrador:
-    build: ./integrador
-    container_name: integrador_gateway
+  servidor:
+    build: ./servidor
+    container_name: servidor_ormuz
+    environment:
+      MEU_SETOR: SETOR_A
     ports:
-      - "8080:8080/udp" # Escuta Sensores UDP (Temperatura)
-      - "8081:8081/tcp" # Escuta Sensores TCP (NFC/Catraca)
-      - "8082:8082/tcp" # Escuta Atuadores (Ar e Lâmpada)
-      - "8083:8083/tcp" # Escuta Clientes (Dashboard/Controle)
+      - "8080:8080/udp"
+      - "8081:8081/tcp"
+      - "8082:8082/tcp"
+      - "8083:8083/tcp"
+      - "8084:8084/tcp"
     restart: always
 
-  # 2. SENSORES
-  sensor_temp_sala1:
-    build: ./sensor_udp  
-    container_name: sensor_temp_sala1
+  dashboard:
+    build: ./dashboard
+    container_name: dashboard_operador
     depends_on:
-      - integrador
+      - servidor
     environment:
-      - SERVER_ADDR=integrador:8080
-      - SENSOR_ID=SALA_1
-      - SENSOR_TIPO=T         
-    restart: always
-
-  sensor_nfc_entrada:
-    build: ./sensor_tcp  
-    container_name: sensor_nfc_entrada
-    depends_on:
-      - integrador
-    environment:
-      - SERVER_ADDR=integrador:8081
-      - SENSOR_ID=CATRACA_ENTRADA
-      - SENSOR_TIPO=NFC      
-    restart: always
-
-  # 3. ATUADORES
-  atuador_ar_sala1:
-    build: ./atuador_ac  
-    container_name: atuador_ar_sala1
-    depends_on:
-      - integrador
-    environment:
-      - INTEGRADOR_ADDR=integrador:8082
-      - ATUADOR_ID=SALA_1
-      - ATUADOR_TIPO=AC       
-    restart: always
-
-  atuador_lampada_sala1:
-    build: ./atuador_led 
-    container_name: atuador_lampada_sala1
-    depends_on:
-      - integrador
-    environment:
-      - INTEGRADOR_ADDR=integrador:8082
-      - ATUADOR_ID=SALA_1
-      - ATUADOR_TIPO=LED      
-    restart: always
-
-  # 4. O CÉREBRO / DASHBOARD
-  cliente:
-    build: ./cliente
-    container_name: cliente_dashboard
-    depends_on:
-      - integrador
-    environment:
-      - INTEGRADOR_ADDR=integrador:8083 
-    stdin_open: true 
+      SERVER_ADDR: servidor:8083
+    stdin_open: true
     tty: true
+    restart: always
+
+  drone:
+    build: ./drone
+    container_name: drone_01
+    depends_on:
+      - servidor
+    environment:
+      SERVER_ADDR: servidor:8082
+      DRONE_ID: DRONE_01
+    restart: always
+
+  radar_tcp:
+    build: ./radar_tcp
+    container_name: radar_tcp_01
+    depends_on:
+      - servidor
+    environment:
+      SERVER_ADDR: servidor:8081
+      SENSOR_ID: RADAR_01
+      SENSOR_TIPO: RADAR
+    restart: always
+
+  sensor_tlm:
+    build: ./sensor_tlm
+    container_name: sensor_tlm_01
+    depends_on:
+      - servidor
+    environment:
+      SERVER_ADDR: servidor:8080
+      SENSOR_ID: BOIA_01
+    restart: always
     

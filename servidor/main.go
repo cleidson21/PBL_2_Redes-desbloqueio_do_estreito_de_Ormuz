@@ -500,6 +500,7 @@ func listenSensoresTLM() {
 	addr, _ := net.ResolveUDPAddr("udp", ":8080")
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
+		fmt.Printf("❌ [%s] Erro ao iniciar porta UDP 8080: %v\n", meuNamespace, err)
 		return
 	}
 	defer conn.Close()
@@ -515,6 +516,8 @@ func listenSensoresTLM() {
 			continue
 		}
 		msg.Remetente = enriquecerIdentidade(msg.Remetente)
+		fmt.Printf("📡 TELEMETRIA recebida [%s]: %s\n", msg.Remetente, msg.Valor)
+		atualizarDashboards(msg)
 	}
 }
 
