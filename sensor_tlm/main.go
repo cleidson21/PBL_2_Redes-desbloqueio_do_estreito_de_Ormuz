@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -25,10 +26,18 @@ type EstadoDrone struct {
 }
 
 func main() {
-	addrEnv := os.Getenv("SERVER_ADDR")
-	if addrEnv == "" {
-		addrEnv = "localhost:8080"
+	addrVars := os.Getenv("SERVER_ADDRS")
+	if addrVars == "" {
+		addrVars = os.Getenv("SERVER_ADDR")
 	}
+	if addrVars == "" {
+		addrVars = "localhost:8080"
+	}
+	listaServidores := strings.Split(addrVars, ",")
+	idxServidor := 0
+
+	var conn *net.UDPConn
+	addrAtual := ""
 
 	// Agora o ID reflete o cenário marítimo (ex: BOIA_NORTE_01, RADAR_VENTO)
 	sensorID := os.Getenv("SENSOR_ID")
@@ -36,20 +45,35 @@ func main() {
 		sensorID = "BOIA_01"
 	}
 
-	servidorAddr, err := net.ResolveUDPAddr("udp", addrEnv)
-	if err != nil {
-		fmt.Printf("❌ Erro ao resolver endereço: %v\n", err)
-		return
+	conectarUDP := func(addr string) error {
+		if conn != nil {
+			conn.Close()
+		}
+		servidorAddr, err := net.ResolveUDPAddr("udp", addr)
+		if err != nil {
+			return err
+		}
+		novaConn, err := net.DialUDP("udp", nil, servidorAddr)
+		if err != nil {
+			return err
+		}
+		conn = novaConn
+		return nil
 	}
 
-	conn, err := net.DialUDP("udp", nil, servidorAddr)
-	if err != nil {
-		fmt.Printf("❌ Erro ao conectar: %v\n", err)
-		return
+	for {
+		addrAtual = strings.TrimSpace(listaServidores[idxServidor])
+		if err := conectarUDP(addrAtual); err != nil {
+			fmt.Printf("⚠️ Falha ao ligar ao servidor UDP %s. A tentar o próximo em 3s... (%v)\n", addrAtual, err)
+			idxServidor = (idxServidor + 1) % len(listaServidores)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		break
 	}
 	defer conn.Close()
 
-	fmt.Printf("📡 Sensor de Telemetria [%s] iniciado! Enviando dados para %s via UDP.\n", sensorID, addrEnv)
+	fmt.Printf("📡 Sensor de Telemetria [%s] iniciado! Enviando dados para %s via UDP.\n", sensorID, addrAtual)
 
 	// Simula uma leitura oscilando dentro de um intervalo fixo.
 	// Pode representar Vento (km/h), Corrente (m/s), etc.
@@ -85,9 +109,25 @@ func main() {
 		fmt.Printf("Enviando JSON -> %s\n", payload)
 
 		// UDP não confirma entrega; o sensor apenas envia e segue o ciclo.
+		if conn == nil {
+			idxServidor = (idxServidor + 1) % len(listaServidores)
+			addrAtual = strings.TrimSpace(listaServidores[idxServidor])
+			if err := conectarUDP(addrAtual); err != nil {
+				fmt.Printf("⚠️ Falha ao reconectar no servidor UDP %s: %v\n", addrAtual, err)
+			}
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
 		_, err := conn.Write(payload)
 		if err != nil {
-			fmt.Printf("⚠️ Erro de rede: %v\n", err)
+			fmt.Printf("⚠️ Erro de envio para %s: %v. Alternando servidor de contingência...\n", addrAtual, err)
+
+			idxServidor = (idxServidor + 1) % len(listaServidores)
+			addrAtual = strings.TrimSpace(listaServidores[idxServidor])
+			if errCon := conectarUDP(addrAtual); errCon != nil {
+				fmt.Printf("⚠️ Falha ao reconectar no servidor UDP %s: %v\n", addrAtual, errCon)
+			}
 		}
 
 		// Intervalo fixo entre amostras para manter a taxa de envio.

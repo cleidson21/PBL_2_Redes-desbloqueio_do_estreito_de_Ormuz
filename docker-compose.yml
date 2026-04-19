@@ -1,24 +1,60 @@
 services:
-  servidor:
+  servidor_a:
     build: ./servidor
-    container_name: servidor_ormuz
+    container_name: servidor_ormuz_a
     environment:
       MEU_SETOR: SETOR_A
+      PEERS: servidor_b:8084,servidor_c:8084
+    networks:
+      - rede_ormuz
     ports:
       - "8080:8080/udp"
       - "8081:8081/tcp"
       - "8082:8082/tcp"
       - "8083:8083/tcp"
-      - "8084:8084/tcp"
+    restart: always
+
+  servidor_b:
+    build: ./servidor
+    container_name: servidor_ormuz_b
+    environment:
+      MEU_SETOR: SETOR_B
+      PEERS: servidor_a:8084,servidor_c:8084
+    networks:
+      - rede_ormuz
+    ports:
+      - "8090:8080/udp"
+      - "8091:8081/tcp"
+      - "8092:8082/tcp"
+      - "8093:8083/tcp"
+    restart: always
+
+  servidor_c:
+    build: ./servidor
+    container_name: servidor_ormuz_c
+    environment:
+      MEU_SETOR: SETOR_C
+      PEERS: servidor_a:8084,servidor_b:8084
+    networks:
+      - rede_ormuz
+    ports:
+      - "8100:8080/udp"
+      - "8101:8081/tcp"
+      - "8102:8082/tcp"
+      - "8103:8083/tcp"
     restart: always
 
   dashboard:
     build: ./dashboard
     container_name: dashboard_operador
     depends_on:
-      - servidor
+      - servidor_a
+      - servidor_b
+      - servidor_c
     environment:
-      SERVER_ADDR: servidor:8083
+      SERVER_ADDRS: servidor_a:8083,servidor_b:8083,servidor_c:8083
+    networks:
+      - rede_ormuz
     stdin_open: true
     tty: true
     restart: always
@@ -27,30 +63,46 @@ services:
     build: ./drone
     container_name: drone_01
     depends_on:
-      - servidor
+      - servidor_a
+      - servidor_b
+      - servidor_c
     environment:
-      SERVER_ADDR: servidor:8082
+      SERVER_ADDRS: servidor_a:8082,servidor_b:8082,servidor_c:8082
       DRONE_ID: DRONE_01
+    networks:
+      - rede_ormuz
     restart: always
 
   radar_tcp:
     build: ./radar_tcp
     container_name: radar_tcp_01
     depends_on:
-      - servidor
+      - servidor_a
+      - servidor_b
+      - servidor_c
     environment:
-      SERVER_ADDR: servidor:8081
+      SERVER_ADDRS: servidor_a:8081,servidor_b:8081,servidor_c:8081
       SENSOR_ID: RADAR_01
       SENSOR_TIPO: RADAR
+    networks:
+      - rede_ormuz
     restart: always
 
   sensor_tlm:
     build: ./sensor_tlm
     container_name: sensor_tlm_01
     depends_on:
-      - servidor
+      - servidor_a
+      - servidor_b
+      - servidor_c
     environment:
-      SERVER_ADDR: servidor:8080
+      SERVER_ADDRS: servidor_a:8080,servidor_b:8080,servidor_c:8080
       SENSOR_ID: BOIA_01
+    networks:
+      - rede_ormuz
     restart: always
+
+networks:
+  rede_ormuz:
+    driver: bridge
     

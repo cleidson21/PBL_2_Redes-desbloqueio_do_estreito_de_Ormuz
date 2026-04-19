@@ -92,41 +92,57 @@ func habilitarKeepAlive(conn net.Conn) {
 	_ = tcpConn.SetKeepAlivePeriod(3 * time.Second)
 }
 
-func manterConexaoComBroker(addr string) {
+func manterConexaoComBroker(addrVars string) {
+	listaServidores := strings.Split(addrVars, ",")
+	idxServidor := 0
+
 	for {
+		addr := strings.TrimSpace(listaServidores[idxServidor])
+
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
-			fmt.Printf("⚠️ Broker offline. A tentar reconectar em 5 segundos... (%v)\n", err)
-			time.Sleep(5 * time.Second)
+			fmt.Printf("⚠️ Falha ao ligar ao servidor %s. A tentar o próximo em 3s... (%v)\n", addr, err)
+			idxServidor = (idxServidor + 1) % len(listaServidores)
+			time.Sleep(3 * time.Second)
 			continue
 		}
 		habilitarKeepAlive(conn)
 
 		setConexao(conn)
-		fmt.Println("✅ Ligado com sucesso ao Broker do Setor!")
+		fmt.Printf("✅ Ligado com sucesso ao servidor em %s\n", addr)
 
 		// Regista-se como um Dashboard
-		enviarMensagem(Mensagem{
+		sucesso := enviarMensagem(Mensagem{
 			Tipo:      "REG",
 			Remetente: "DASHBOARD_OPERADOR",
 		})
+		if !sucesso {
+			descartarConexao(conn)
+			idxServidor = (idxServidor + 1) % len(listaServidores)
+			time.Sleep(3 * time.Second)
+			continue
+		}
 
 		ouvirRede(conn)
 
 		descartarConexao(conn)
-		fmt.Println("❌ Ligação perdida. A iniciar reconexão...")
+		fmt.Println("❌ Ligação perdida. Alternando para o próximo servidor de contingência...")
+		idxServidor = (idxServidor + 1) % len(listaServidores)
 		time.Sleep(3 * time.Second)
 	}
 }
 
 // INTERFACE COM O UTILIZADOR (CLI)
 func main() {
-	addrEnv := os.Getenv("SERVER_ADDR")
-	if addrEnv == "" {
-		addrEnv = "localhost:8083" // Porta do dashboard no servidor
+	addrVars := os.Getenv("SERVER_ADDRS")
+	if addrVars == "" {
+		addrVars = os.Getenv("SERVER_ADDR")
+	}
+	if addrVars == "" {
+		addrVars = "localhost:8083"
 	}
 
-	go manterConexaoComBroker(addrEnv)
+	go manterConexaoComBroker(addrVars)
 
 	reader := bufio.NewReader(os.Stdin)
 

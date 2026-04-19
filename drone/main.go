@@ -66,21 +66,30 @@ func main() {
 		droneID = "DRONE_01"
 	}
 
-	servidorAddr := os.Getenv("SERVER_ADDR")
-	if servidorAddr == "" {
-		servidorAddr = "localhost:8082" // Porta do servidor do setor
+	addrVars := os.Getenv("SERVER_ADDRS")
+	if addrVars == "" {
+		addrVars = os.Getenv("SERVER_ADDR")
+	}
+	if addrVars == "" {
+		addrVars = "localhost:8082"
 	}
 
+	listaServidores := strings.Split(addrVars, ",")
+	idxServidor := 0
+
 	for {
-		conn, err := net.Dial("tcp", servidorAddr)
+		addr := strings.TrimSpace(listaServidores[idxServidor])
+
+		conn, err := net.Dial("tcp", addr)
 		if err != nil {
-			fmt.Printf("⚠️ Servidor do setor offline. A tentar novamente em 5 segundos... (%v)\n", err)
-			time.Sleep(5 * time.Second)
+			fmt.Printf("⚠️ Falha ao ligar ao servidor %s. A tentar o próximo em 3s... (%v)\n", addr, err)
+			idxServidor = (idxServidor + 1) % len(listaServidores)
+			time.Sleep(3 * time.Second)
 			continue
 		}
 		habilitarKeepAlive(conn)
 
-		fmt.Printf("🚁 [%s] Iniciado! Ligado ao servidor em %s\n", droneID, servidorAddr)
+		fmt.Printf("✅ [%s] Conectado com sucesso ao servidor em %s\n", droneID, addr)
 
 		// Regista o drone no Broker
 		if err := enviarMensagem(conn, Mensagem{
@@ -90,6 +99,7 @@ func main() {
 		}); err != nil {
 			fmt.Printf("⚠️ Falha ao registar o drone: %v\n", err)
 			conn.Close()
+			idxServidor = (idxServidor + 1) % len(listaServidores)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -187,10 +197,11 @@ func main() {
 		done <- true
 
 		if err := scanner.Err(); err != nil {
-			fmt.Printf("⚠️ Ligação com o Broker interrompida: %v\n", err)
+			fmt.Printf("⚠️ Ligação com o servidor interrompida: %v\n", err)
 		}
 		conn.Close()
-		fmt.Println("❌ Ligação perdida. A iniciar reconexão...")
+		fmt.Println("❌ Ligação perdida. Alternando para o próximo servidor de contingência...")
+		idxServidor = (idxServidor + 1) % len(listaServidores)
 		time.Sleep(3 * time.Second)
 	}
 }

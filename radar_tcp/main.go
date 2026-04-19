@@ -37,10 +37,16 @@ func habilitarKeepAlive(conn net.Conn) {
 }
 
 func main() {
-	addrEnv := os.Getenv("SERVER_ADDR")
-	if addrEnv == "" {
-		addrEnv = "localhost:8081" // Porta de Eventos Críticos no Broker
+	addrVars := os.Getenv("SERVER_ADDRS")
+	if addrVars == "" {
+		addrVars = os.Getenv("SERVER_ADDR")
 	}
+	if addrVars == "" {
+		addrVars = "localhost:8081"
+	}
+
+	listaServidores := strings.Split(addrVars, ",")
+	idxServidor := 0
 
 	sensorID := os.Getenv("SENSOR_ID")
 	if sensorID == "" {
@@ -66,15 +72,18 @@ func main() {
 	}
 
 	for {
-		conn, err := net.Dial("tcp", addrEnv)
+		addr := strings.TrimSpace(listaServidores[idxServidor])
+
+		conn, err := net.Dial("tcp", addr)
 		if err != nil {
-			fmt.Printf("⚠️ Broker de Setor offline. A tentar novamente em 5 segundos... (%v)\n", err)
-			time.Sleep(5 * time.Second)
+			fmt.Printf("⚠️ Falha ao ligar ao servidor %s. A tentar o próximo em 3s... (%v)\n", addr, err)
+			idxServidor = (idxServidor + 1) % len(listaServidores)
+			time.Sleep(3 * time.Second)
 			continue
 		}
 		habilitarKeepAlive(conn)
 
-		fmt.Printf("🚨 Sensor Crítico [%s] (Tipo: %s) Iniciado! A enviar eventos para %s via TCP.\n", sensorID, sensorTipo, addrEnv)
+		fmt.Printf("✅ Sensor Crítico [%s] (Tipo: %s) conectado ao servidor em %s.\n", sensorID, sensorTipo, addr)
 
 		for {
 			// Sorteia um evento crítico da lista do "Camaleão"
@@ -117,7 +126,8 @@ func main() {
 		}
 
 		conn.Close()
-		fmt.Println("❌ Ligação perdida. A iniciar reconexão...")
+		fmt.Println("❌ Ligação perdida. Alternando para o próximo servidor de contingência...")
+		idxServidor = (idxServidor + 1) % len(listaServidores)
 		time.Sleep(3 * time.Second)
 	}
 }
