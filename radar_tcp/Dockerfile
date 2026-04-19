@@ -5,11 +5,11 @@ WORKDIR /app
 COPY go.mod ./
 COPY main.go ./
 # Compila o binário
-RUN go build -o sensor_tcp main.go
+RUN go build -o radar_tcp main.go
 
 # Estágio final (imagem leve)
 FROM alpine:latest
 WORKDIR /root/
-COPY --from=builder /app/sensor_tcp .
+COPY --from=builder /app/radar_tcp .
 # Executa o sensor
-CMD ["./sensor_tcp"]
+CMD ["./radar_tcp"]

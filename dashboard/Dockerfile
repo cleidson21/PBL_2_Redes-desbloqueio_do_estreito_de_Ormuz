@@ -3,11 +3,11 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY go.mod ./
 COPY main.go ./
-RUN go build -o atuador_ac main.go
+RUN go build -o dashboard main.go
 
 # Estágio final
 FROM alpine:latest
 WORKDIR /root/
-COPY --from=builder /app/atuador_ac .
+COPY --from=builder /app/dashboard .
 
-CMD ["./atuador_ac"]
+CMD ["./dashboard"]
