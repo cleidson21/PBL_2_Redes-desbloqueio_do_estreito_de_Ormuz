@@ -227,10 +227,25 @@ Formato (campos podem ser opcionais por tipo):
 │   ├── stress_clientes.sh
 │   └── stress_sensores.sh
 ├── dashboard/
+│   ├── Dockerfile
+│   ├── go.mod
+│   └── main.go
 ├── drone/
+│   ├── Dockerfile
+│   ├── go.mod
+│   └── main.go
 ├── radar_tcp/
+│   ├── Dockerfile
+│   ├── go.mod
+│   └── main.go
 ├── sensor_tlm/
+│   ├── Dockerfile
+│   ├── go.mod
+│   └── main.go
 └── servidor/
+    ├── Dockerfile
+    ├── go.modh
+    └── main.go
 ```
 
 ---
