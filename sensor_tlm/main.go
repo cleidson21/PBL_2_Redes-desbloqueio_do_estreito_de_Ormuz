@@ -73,23 +73,41 @@ func main() {
 	}
 	defer conn.Close()
 
-	fmt.Printf("📡 Sensor de Telemetria [%s] iniciado! Enviando dados para %s via UDP.\n", sensorID, addrAtual)
+	fmt.Printf("📡 Sensor de Telemetria [%s] iniciado! Enviando dados para %s via UDP a cada 2s.\n", sensorID, addrAtual)
+	fmt.Printf("   Threshold: valor > 70.0 durante 2 leituras consecutivas gera alerta CRÍTICO\n")
 
 	// Simula uma leitura oscilando dentro de um intervalo fixo.
 	// Pode representar Vento (km/h), Corrente (m/s), etc.
 	valorAtual := 20.0
-	variacao := 1.5
+	variacao := 0.3 // Reduzido de 1.5 para 0.3 para evitar saturação
+
+	// Rastreamento para threshold-based alert
+	valorAnterior := 0.0
+	contadorAlto := 0
+	const THRESHOLD = 70.0
+	const CONTADOR_LIMITE = 2
 
 	for {
 		// Inverte o sentido quando atinge os limites para manter a oscilação.
 		valorAtual += variacao
 
-		if valorAtual >= 85.0 {
-			valorAtual = 85.0
-			variacao = -1.5
-		} else if valorAtual <= 10.0 {
-			valorAtual = 10.0
-			variacao = 1.5
+		if valorAtual >= 80.0 {
+			valorAtual = 80.0
+			variacao = -0.3
+		} else if valorAtual <= 15.0 {
+			valorAtual = 15.0
+			variacao = 0.3
+		}
+
+		// Verifica condição de threshold para gerar alerta
+		if valorAtual > THRESHOLD {
+			contadorAlto++
+			if contadorAlto >= CONTADOR_LIMITE && valorAnterior <= THRESHOLD {
+				fmt.Printf("🚨 [THRESHOLD ALERT] Sensor %s detectou condição crítica: %.2f > %.2f (em %d leituras)\n", sensorID, valorAtual, THRESHOLD, contadorAlto)
+				// Aqui poderia gerar um alerta EVT/ALERTA, mas se preferir apenas TLM, continua assim
+			}
+		} else {
+			contadorAlto = 0
 		}
 
 		// Montagem do pacote JSON enxuto
@@ -102,11 +120,11 @@ func main() {
 		payload, errMarshal := json.Marshal(mensagem)
 		if errMarshal != nil {
 			fmt.Printf("⚠️ Erro ao serializar telemetria JSON: %v\n", errMarshal)
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		fmt.Printf("Enviando JSON -> %s\n", payload)
+		fmt.Printf("📤 Enviando JSON -> %s\n", payload)
 
 		// UDP não confirma entrega; o sensor apenas envia e segue o ciclo.
 		if conn == nil {
@@ -115,7 +133,7 @@ func main() {
 			if err := conectarUDP(addrAtual); err != nil {
 				fmt.Printf("⚠️ Falha ao reconectar no servidor UDP %s: %v\n", addrAtual, err)
 			}
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
@@ -130,7 +148,8 @@ func main() {
 			}
 		}
 
-		// Intervalo fixo entre amostras para manter a taxa de envio.
-		time.Sleep(500 * time.Millisecond)
+		// Intervalo fixo entre amostras: 2 segundos (aumentado de 500ms)
+		valorAnterior = valorAtual
+		time.Sleep(2 * time.Second)
 	}
 }
