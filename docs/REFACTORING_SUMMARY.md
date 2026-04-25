@@ -289,7 +289,88 @@ docker-compose down && docker-compose up
 
 ---
 
-## 📊 SIGN-OFF
+## � DEPLOYMENT CHECKLIST (Lab Network 172.16.201.0/24)
+
+### Pre-Deployment (Preparação)
+- [ ] Clonar novo código: `git pull origin main`
+- [ ] Verificar compilação: `cd servidor && go build` (sem erros)
+- [ ] Verificar sensor_tlm: `cd sensor_tlm && go build` (sem erros)
+- [ ] Revisar MODULARIZATION_CHANGELOG.md (entender mudanças)
+- [ ] Preparar 4 máquinas ou containers: 172.16.201.5-.8
+- [ ] Atualizar docker-compose.yml com nova config P2P (IPs)
+- [ ] Preparar logs staging area: `/tmp/deployment_logs/`
+
+### Build Phase
+- [ ] Build servidor:v2.0: `cd servidor && docker build -t servidor:v2.0 .`
+- [ ] Build sensor_tlm:v2.0: `cd sensor_tlm && docker build -t sensor_tlm:v2.0 .`
+- [ ] Verificar imagens: `docker images | grep v2.0`
+- [ ] Tag para registry (se aplicável): `docker tag servidor:v2.0 registry/servidor:v2.0`
+
+### Deployment Phase (Minimum 2-Server)
+- [ ] **Servidor 5:** `docker pull; docker-compose up servidor5 -d`
+  - Verificar: `docker logs servidor5 | grep "ListenP2P"` ✅
+- [ ] **Servidor 6:** `docker pull; docker-compose up servidor6 -d`
+  - Verificar: `docker logs servidor6 | grep "Conectado a 172.16.201.5"` ✅
+- [ ] (Optional) **Servidor 7:** `docker-compose up servidor7 -d`
+- [ ] (Optional) **Servidor 8:** `docker-compose up servidor8 -d`
+
+### Validation Phase (Run Baseline Test)
+```bash
+# Terminal 1: Validar P2P
+for i in 5 6 7 8; do
+  echo "Servidor $i:"; 
+  docker logs servidor$i 2>/dev/null | grep "Conectado\|VIZINHOS" | head -2
+done
+# Esperado: Cada servidor conectado aos outros
+
+# Terminal 2: Iniciar 1 sensor + 1 drone (Scenario 1)
+bash arquivos_sh/stress_sensores.sh 1
+bash arquivos_sh/stress_atuadores.sh 1
+# Aguardar 30s
+
+# Terminal 3: Monitorar logs
+docker logs -f servidor5 | grep -E "QUEUE|CONSENSO|DESPACHO"
+# Esperado: Ver "CONSENSO_ALCANÇADO" em poucas linhas
+```
+
+- [ ] E2E latency < 2s: `docker logs servidor5 | grep "DESPACHO"` (procurar timestamp)
+- [ ] QUEUE STATUS aparece: `docker logs servidor5 | grep "QUEUE"`
+- [ ] Consenso alcançado: `docker logs servidor5 | grep "CONSENSO"`
+- [ ] Sem erros críticos: `docker logs servidor5 | grep -i "error\|fail"` (vazio ✅)
+- [ ] Gossip sincronizando: `docker logs servidor6 | grep "SINCRONIZANDO"`
+
+### Health Check Phase
+- [ ] **CPU**: `docker stats --no-stream | grep servidor5 | awk '{print $3}'` < 30%
+- [ ] **Memory**: `docker stats --no-stream | grep servidor5 | awk '{print $4}'` < 150MB
+- [ ] **P2P Connections**: `netstat -an | grep 9000` (múltiplas conexões ESTABLISHED)
+- [ ] **Database replica**: Todos 4 servidores têm FrotaGlobal idêntica
+
+### Rollback Plan (Se Necessário)
+- [ ] Manter tag v1.0 no registry: `docker tag servidor:v1.0 old_backup`
+- [ ] Rollback: `docker-compose down; docker-compose up --no-build` (usa v1.0)
+- [ ] Verificar: `docker logs servidor5 | head -20` (confirma v1.0)
+
+### Post-Deployment (Monitoring)
+- [ ] Setup alertas em logs:
+  ```bash
+  # Procurar erros a cada 5 min
+  watch -n 300 'docker logs servidor5 | grep -c "ERROR\|FAIL"'
+  ```
+- [ ] Monitorar memory leak:
+  ```bash
+  watch -n 60 'docker stats --no-stream | grep servidor[5-8] | awk "{print \$4}"'
+  # Esperado: valores estáveis (não crescentes)
+  ```
+- [ ] Setup backup de logs:
+  ```bash
+  for i in 5 6 7 8; do
+    docker logs servidor$i > /tmp/deployment_logs/srv$i.log 2>&1 &
+  done
+  ```
+
+---
+
+## �📊 SIGN-OFF
 
 | Aspecto | Status | 
 |---------|--------|
@@ -304,6 +385,6 @@ docker-compose down && docker-compose up
 ---
 
 **Versão:** 2.0.0 (Modular + Queuing)  
-**Data:** 2025-01-02  
+**Data:** 2026-04-24  
 **Autor:** Refactoring Agent  
-**Status:** ✅ IMPLEMENTADO E TESTADO
+**Status:** ✅ IMPLEMENTADO E TESTADO (Em Ambiente Multimodalidade)

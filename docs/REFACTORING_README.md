@@ -250,6 +250,119 @@ done
 
 ---
 
+## 🌐 DEPLOYING TO LAB NETWORK (172.16.201.0/24)
+
+### Prerequisitos
+- 4 máquinas Linux ou containers Docker com acesso a 172.16.201.0/24
+- IPs reservados:
+  - `172.16.201.5` - Servidor SETOR_05
+  - `172.16.201.6` - Servidor SETOR_06  
+  - `172.16.201.7` - Servidor SETOR_07
+  - `172.16.201.8` - Servidor SETOR_08
+
+### Configuração de Rede P2P
+
+**Arquivo: `docker-compose.yml` (update IPs)**
+```yaml
+services:
+  servidor5:
+    environment:
+      - MEU_SETOR=SETOR_05
+      - PEERS=172.16.201.6:9000,172.16.201.7:9000,172.16.201.8:9000
+      - MY_IP=172.16.201.5
+    ports:
+      - "8080:8080"  # Clientes (sensores, drones, dashboard)
+      - "9000:9000"  # P2P ao servidor6
+  servidor6:
+    environment:
+      - MEU_SETOR=SETOR_06
+      - PEERS=172.16.201.5:9000,172.16.201.7:9000,172.16.201.8:9000
+      - MY_IP=172.16.201.6
+    # ... etc
+```
+
+### Deploy Multi-Máquina (Minimum 2 Servers)
+
+**Máquina A (172.16.201.5):**
+```bash
+# Build e push para registry (ou build local)
+cd /path/to/repo
+docker-compose up servidor5 -d
+
+# Verificar logs P2P
+docker logs servidor5 | grep "Conectando\|Vizinho\|P2P"
+```
+
+**Máquina B (172.16.201.6):**
+```bash
+docker-compose up servidor6 -d
+docker logs servidor6 | grep "Conectando\|Vizinho"
+# Esperado: conexão bem-sucedida com 172.16.201.5
+```
+
+**Máquinas C & D (opcional, para 4-servidor quorum):**
+```bash
+# machine_172.16.201.7
+docker-compose up servidor7 -d
+
+# machine_172.16.201.8  
+docker-compose up servidor8 -d
+```
+
+### Iniciar Sensores e Drones (Stress Testing)
+
+**Qualquer máquina com acesso a 172.16.201.x:**
+```bash
+# Scenario 1: 2-server baseline
+QTD_SALAS=1 bash arquivos_sh/stress_sensores.sh 1
+QTD_SALAS=1 bash arquivos_sh/stress_atuadores.sh 1
+
+# Scenario 2: 4-server scale
+QTD_SALAS=3 bash arquivos_sh/stress_sensores.sh 3
+QTD_SALAS=3 bash arquivos_sh/stress_atuadores.sh 3
+
+# Scenario 3: Stress (4-server + high concurrency)
+QTD_SALAS=20 bash arquivos_sh/stress_sensores.sh 20
+QTD_SALAS=20 bash arquivos_sh/stress_atuadores.sh 20
+```
+
+### Validação Rápida (2-Minute Checklist)
+
+```bash
+# 1. Verificar conectividade P2P
+for i in 5 6 7 8; do
+  echo "=== Servidor $i ===";
+  docker logs servidor$i | grep "VIZINHOS\|Conectado" | tail -2
+done
+
+# 2. Verificar registros de clientes
+docker logs servidor5 | grep "registrado em SETOR" | wc -l
+# Esperado: >= 3 (sensores/drones)
+
+# 3. Verificar fila de alertas
+docker logs servidor5 | grep "QUEUE STATUS" | head -3
+# Esperado: "QUEUE STATUS: X críticos, Y normais"
+
+# 4. Verificar consenso Ricart
+docker logs servidor5 | grep "CONSENSO_ALCANÇADO\|DESPACHO" | wc -l  
+# Esperado: >= 1
+
+# 5. Verificar sincronização Gossip
+docker logs servidor6 | grep "SINCRONIZANDO\|FrotaGlobal" | tail -2
+# Esperado: log recente (< 10s atrás)
+```
+
+### Troubleshooting Conexão de Rede
+
+| Problema | Debug |
+|----------|-------|
+| **Servidor não conecta a vizinhos** | `docker logs servidorX \| grep "ERRO\|FAIL"` ou `netstat -an \| grep 9000` |
+| **Sensores não encontram servidor** | `docker logs sensor_tlm_1 \| grep "172.16.201" \| head -5` |
+| **Gossip não sincroniza** | `docker logs servidorX \| grep "LAMPORT_DIFF\|SYNC"` |
+| **Falhas de P2P após timeout** | Aumentar `PEER_TIMEOUT` em `listeners.go` (padrão 5s) |
+
+---
+
 ## 🚀 PRÓXIMOS PASSOS (v2.1+)
 
 - [ ] Testes unitários por módulo (ricart_test.go, queue_test.go)
@@ -302,5 +415,5 @@ A: Não esperado - modularização reduz contenção, TLM reduzido alivia carga
 ---
 
 **Versão:** 2.0.0 (Modular + Queuing)  
-**Data:** 2025-01-02  
-**Status:** ✅ Implementado e Testado
+**Data:** 2026-04-24  
+**Status:** ✅ Implementado e Testado (Testado em Multimodalidade)

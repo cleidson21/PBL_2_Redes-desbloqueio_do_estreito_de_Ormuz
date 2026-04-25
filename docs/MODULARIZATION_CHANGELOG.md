@@ -258,6 +258,111 @@ Starvation threshold: 3 ciclos críticos (tunable)
 
 ---
 
+## 🧪 VALIDAÇÃO EM CENÁRIOS REAIS (com `arquivos_sh/` scripts)
+
+### Queue Module - Validar Starvation Prevention
+**Cenário:** Stress com 4 sensores críticos + 1 dashboard manual (normal)
+
+```bash
+# Terminal 1: Iniciar 4 servidores
+for i in 5 6 7 8; do
+  HOST_OCTET=$i nohup bash run_servidor.sh > /tmp/srv$i.log 2>&1 &
+done
+
+# Terminal 2: Disparar alertas críticos continuamente
+bash stress_sensores.sh 4  # 4 setores × 4 tipos = 16 sensores
+
+# Terminal 3: Verificar promoção normal→crítico
+docker logs servidor5 | grep "PROMOVIDO_NORMAL_A_CRITICO\|QUEUE STATUS"
+# Esperado após 30s:
+# - QUEUE STATUS: 10+ críticos, 0 normais (FIFO consumindo críticos)
+# - Após ciclo 3 críticos: "PROMOVIDO_NORMAL_A_CRITICO" (dashboard alerta promovido)
+```
+
+### Ricart Module - Validar Consenso em 4 Dezenas
+**Cenário:** 2 sensores/setor durante 1 minuto
+
+```bash
+# Aprox. 8 pedidos/minuto × 4 setores = 32 requisições Ricart
+
+# Verificar ACKs recebidos
+for i in 5 6 7 8; do
+  echo "=== Servidor $i ==="; 
+  docker logs servidor$i | grep "ACK_RECEIVED\|RICART_REQUEST" | wc -l
+done
+# Esperado: cada servidor recebe ~24 ACKs (de despacho em outros setores)
+
+# Verificar consenso alcançado
+docker logs servidor5 | grep "CONSENSO_ALCANÇADO" | head -5
+# Esperado: timestamp < 1s após RICART_REQUEST
+```
+
+### Lamport Module - Validar Clock Sincronização
+**Cenário:** 4 servidores operando em paralelo por 2 minutos
+
+```bash
+# Extrair Lamport clock de cada servidor a cada 30s
+watch -n 30 'for i in 5 6 7 8; do echo "Srv $i:"; \
+  docker logs servidor$i | grep "LAMPORT_CLOCK" | tail -1; done'
+# Esperado: todos com valores próximos (<5 de diferença)
+# Esperado: incremento de ~8-10 por processamento de múltiplos eventos
+```
+
+### P2P Module - Validar Gossip Replicação
+**Cenário:** FrotaGlobal deve ser idêntico em todos 4 servidores
+
+```bash
+# Snapshot do FrotaGlobal em servidor5
+FROTA5=$(docker logs servidor5 | grep "FrotaGlobal={" | tail -1)
+
+# Aguardar propagação (1-2s gossip)
+sleep 3
+
+# Verificar se servidor7 tem mesmo estado
+docker logs servidor7 | grep "$FROTA5" | head -1
+# Esperado: encontrado (replicação funcionou)
+
+# Verificar lag de replicação
+time_frota5=$(docker logs servidor5 | grep "FrotaGlobal" | tail -1 | awk '{print $1}')
+time_frota7=$(docker logs servidor7 | grep "FrotaGlobal" | tail -1 | awk '{print $1}' | grep "$FROTA5")
+# Esperado: diferença <2000ms
+```
+
+### Listeners Module - Validar Registros Múltiplos
+**Cenário:** 16 sensores + 4 drones registrando simultaneamente
+
+```bash
+# Durante stress_sensores + stress_atuadores
+for i in 5 6 7 8; do
+  echo "=== Servidor $i ===";
+  docker logs servidor$i | grep "registrado em SETOR\|registrando" | wc -l  
+done
+# Esperado: ~5-6 por servidor (distribuição de clientes)
+
+# Verificar sem erros de conexão
+docker logs servidor5 | grep "TCP_ERROR\|UDP_ERROR\|CONEXAO_FALHOU"
+# Esperado: nenhuma linha (ou muito poucas)
+```
+
+### Main/Util - Orquestração Completa
+**Cenário:** Sistema start-to-end (Cenário Scale: 4 srv + 12 sensores + 4 drones)
+
+```bash
+# Verificar que todas as goroutines iniciaram
+docker logs servidor5 | grep -E "ListenP2P|StartConsumer|RotinaGossip|ListenRadarTCP" | head -5
+# Esperado: 4+ goroutines iniciadas (uma entrada por listener)
+
+# Verificar uptime (não crasheou)
+docker ps | grep servidor5 | awk '{print $11}'
+# Esperado: status "Up X seconds" (sem Exited)
+
+# Verificar memória estável após 5 min
+docker stats servidor5 --no-stream | awk '{print $4}'
+# Esperado: <150MB e não crescendo
+```
+
+---
+
 ## 🔗 REFERÊNCIAS
 
 - [Go Code Organization](https://golang.org/doc/effective_go#names)
@@ -267,6 +372,6 @@ Starvation threshold: 3 ciclos críticos (tunable)
 
 ---
 
-**Data:** 2025-01-02  
+**Data:** 2026-04-24  
 **Versão:** 2.0.0 (Modular + Queuing)  
 **Status:** ✅ Implementado e Testado

@@ -221,6 +221,166 @@ PROPAGAÇÃO DE ESTADO
 
 ---
 
+## 🧪 DURANTE STRESS TESTING (Validação Prática)
+
+### 2-Server Scenario (stress_sensores.sh 1 + stress_atuadores.sh 1)
+
+**types.go + queue.go - Validar Fila:**
+```bash
+# Procurar por QUEUE STATUS durante processamento
+docker logs servidor5 | grep "QUEUE STATUS"
+# Esperado: "critical: 1-5 itens, normal: 0 itens" (consumo rápido)
+# RED FLAG: "critical: 100+" ou "normal: 100" (fila presa)
+```
+
+**lamport.go - Validar Clock:**
+```bash
+# Validar incremento
+docker logs servidor5 | grep "LAMPORT_CLOCK" | tail -10 | awk '{print $NF}'
+# Esperado: valores crescentes (42 → 43 → 44...)
+# RED FLAG: stagnação (sempre 42) ou saltos > 10
+```
+
+**ricart.go - Validar Consenso:**
+```bash
+# Procurar requisição → ACKs → consenso
+docker logs servidor5 | grep -E "RICART_REQUEST|ACK_RECEIVED|CONSENSO" | head -20
+# Esperado: 1 REQUEST → 1 ACK (de servidor6) → 1 CONSENSO
+# RED FLAG: REQUEST mas nunca ACK (servidor6 offline?)
+```
+
+**p2p.go - Validar P2P:**
+```bash
+# Verificar conexão bidirecional
+docker logs servidor5 | grep "Conectado\|VIZINHOS" | head -5
+# Esperado: "Conectado a 172.16.201.6" ou lista de vizinhos
+# RED FLAG: "Falha" ou "TIMEOUT" (problema de rede)
+```
+
+**listeners.go - Validar Registros:**
+```bash
+# Contar clientes registrados
+docker logs servidor5 | grep "registrado em SETOR_05" | wc -l
+# Esperado: >= 2 (1 sensor + 1 drone)
+# RED FLAG: 0 (ninguém conectando) ou muitos timeouts
+```
+
+---
+
+### 4-Server Scenario (stress_sensores.sh 3 + stress_atuadores.sh 3)
+
+**Adicional: Gossip Replication (p2p.go)**
+```bash
+# Coletar FrotaGlobal de todos servidores
+for i in 5 6 7 8; do
+  echo "=== Servidor $i ===";
+  docker logs servidor$i | grep "FrotaGlobal" | tail -1
+done
+# Esperado: mesma estrutura em todos (possível 1-2s de lag)
+# RED FLAG: Servidor7 divergido vs Servidor5 (gossip falhou)
+```
+
+**Queue Breakdown (queue.go)**
+```bash
+# Ver distribuição de alertas nos 4 setores
+for i in 5 6 7 8; do
+  echo -n "Setor.$i: "
+  docker logs servidor$i | grep "registrado em SETOR" | grep "sensor\|drone" | wc -l
+done
+# Esperado: distribuição ~similar (3-4 por setor)
+# RED FLAG: 1 setor com 10, outro com 0 (load balance broken)
+```
+
+**Multi-server Ricart (ricart.go)**
+```bash
+# Validar consenso com >1 vizinho (quorum)
+docker logs servidor5 | grep "ACK_RECEIVED" | head -20
+# Esperado: cada consenso tem 3 ACKs (de .6, .7, .8)
+# RED FLAG: consenso com <3 ACKs (quorum broken)
+```
+
+---
+
+### Stress Scenario (stress_sensores.sh 20 + stress_atuadores.sh 20)
+
+**Starvation Prevention (queue.go)**
+```bash
+# Procurar promoção de alertas normais
+docker logs servidor5 | grep "PROMOVIDO_NORMAL_A_CRITICO" | wc -l
+# Esperado: 10-50 durante stress (algumas promoções)
+# RED FLAG: 0 (starvation disabled?) ou 1000+ (muito agressivo)
+```
+
+**Performance - Memory (main.go + all)**
+```bash
+# Monitorar crescimento de memória
+watch -n 5 'docker stats servidor5 --no-stream | tail -1 | awk "{print \$4}"'
+# Esperado: <200MB ao longo de 5min (estável)
+# RED FLAG: crescimento contínuo (memory leak) ou >300MB
+```
+
+**Performance - CPU (util.go + listeners.go)**
+```bash
+# Monitorar CPU durante stress
+docker stats servidor5 --no-stream | tail -1 | awk '{print $3}'
+# Esperado: <70% durante stress
+# RED FLAG: 99%+ (deadlock?) ou crescimento lento > 90% (backpressure fail)
+```
+
+**Throughput (listeners.go + queue.go)**
+```bash
+# Contar despachos/min durante stress
+docker logs servidor5 --since 60s | grep "DESPACHO_CONFIRMADO" | wc -l
+# Esperado: 100+ despachos/min com 20 sensores
+# RED FLAG: <50 (engarrafamento) ou 0 (sistema travado)
+```
+
+**Latência E2E (ricart.go + listeners.go)**
+```bash
+# Extrair timestamp entrada vs saída
+docker logs servidor5 | grep "ENTRADA\|DESPACHO" | \
+  paste - - | awk '{print $2-$1}' | sort -n | tail -1
+# Esperado: <8000ms no p99
+# RED FLAG: >15000ms (consenso muito lento) ou timeout
+```
+
+---
+
+### Failover Scenario (Kill 1 server, validar reconexão)
+
+**P2P Recovery (p2p.go)**
+```bash
+# T0: Anotar timestamp
+T0=$(date +%s)
+docker stop servidor5
+echo "Killed at T=$T0"
+
+# T0+5: Verificar reconexão de drones/sensores
+docker logs drone_1 | grep "RECONECTANDO\|NOVO_GATEWAY" | head -1
+# Esperado: encontrado com timestamp < T0+10s
+# RED FLAG: não encontrado (failover quebrou)
+```
+
+**Gossip During Downtime (p2p.go)**
+```bash
+# Enquanto servidor5 está down, verificar sync nos outros
+docker logs servidor6 | grep "SINCRONIZANDO\|LAMPORT_CLOCK" | tail -5
+# Esperado: continua processando sem servidor5
+# RED FLAG: "ESPERANDO SERVIDOR 05" (hard dependency)
+```
+
+**State Recover (ricart.go + queue.go)**
+```bash
+# Depois de restart servidor5
+docker start servidor5
+sleep 5
+docker logs servidor5 | grep "SINCRONIZANDO\|LAMPORT.*CATCH_UP"
+# Esperado: vê backlog de eventos missed
+# RED FLAG: começa do 0 (perdeu histórico)
+```
+
+---
+
 ## 🚨 RED FLAGS (O Que Procurar)
 
 | Issue | Onde Procurar | Gravidade |
@@ -284,6 +444,6 @@ A: Suporta múltiplas instâncias (testes paralelos), facilita dependency inject
 
 ---
 
-**Data:** 2025-01-02  
+**Data:** 2026-04-24  
 **Tipo:** Code Review Guide  
 **Versão:** 2.0.0
