@@ -39,7 +39,7 @@ Este documento organiza os arquivos por ordem de revisão recomendada, com ponto
 - `TickLamport()` - incrementa + retorna
 - `SyncLamport()` - sincroniza de valor remoto
 
-**Checklist:**
+**Checklist: **
 - [ ] TickLamport() sempre incrementa antes de usar? Sim ✅
 - [ ] SyncLamport() respeita max(local, remoto) + 1? Sim ✅
 

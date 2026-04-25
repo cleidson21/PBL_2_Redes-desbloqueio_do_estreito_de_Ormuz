@@ -1,4 +1,4 @@
-# 📋 RESUMO EXECUTIVO - REFATORAÇÃO SERVIDOR v2.0
+# ✅ RESUMO EXECUTIVO - REFATORAÇÃO SERVIDOR v2.0
 
 ## 🎯 OBJETIVO ALCANÇADO
 Transformar arquitetura monolítica (700 linhas) em **sistema modular com alertas inteligentes**, mitigando perda de alertas e saturation.
@@ -266,7 +266,7 @@ docker-compose down && docker-compose up
 1. **Modularização beneficia resiliência** - AlertQueue reduz acoplamento entre eventos e processamento
 2. **Consumer threads simplificam sincronização** - Uma goroutine dedicada é melhor que gates espalhados
 3. **Starvation prevention precisa ser explícita** - Sem lógica de promoção, alertas normais podem nunca ser atendidos
-4. **Tuning de timings é crítico** - 500ms vs 2s muda dinâmica de sistema completamente
+4. **Tuning de timings é crítico** - 500ms vs 2s muda dinâmica do sistema completamente
 
 ---
 

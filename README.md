@@ -1,52 +1,48 @@
 # PBL 2 - Redes: Desbloqueio do Estreito de Ormuz
 
-Projeto da disciplina de Conectividade e Concorrencia com arquitetura distribuida orientada a eventos, usando Go, TCP/UDP e Docker.
+Projeto da disciplina de Conectividade e Concorrência com arquitetura distribuída orientada a eventos, usando Go, TCP/UDP e Docker.
 
-A implementacao atual modela uma rede de vigilancia maritima com tres servidores de setor (P2P), sensores, drones e um painel de operacao com failover automatico.
+Este repositório modela uma rede de vigilância marítima com servidores de setor em malha P2P, sensores, drones e painel de operação. A versão atual já está modularizada no servidor e inclui filas com prioridade, producer-consumer e documentação separada por assunto.
 
-## Topicos
+## Documentação oficial
 
-- Visao geral
-- Objetivos tecnicos
-- Arquitetura atual
-- Componentes do sistema
-- Tecnologias utilizadas
-- Protocolo de mensagens
-- Conectividade e portas
-- Tolerancia a falhas e resiliencia
-- Estrutura do projeto
-- Como executar com Docker Compose
-- Como executar por setor (manual)
-- Testes de stress com imagens Docker Hub
-- Comandos uteis
-- Fluxo de desenvolvimento e publicacao
+Esta README funciona como página principal. Para navegação técnica, use o portal em [docs/README.md](docs/README.md).
 
----
+- [docs/README.md](docs/README.md) - portal da documentação técnica.
+- [docs/REFACTORING_README.md](docs/REFACTORING_README.md) - índice geral da refatoração e quick start.
+- [docs/REFACTORING_SUMMARY.md](docs/REFACTORING_SUMMARY.md) - resumo executivo da entrega.
+- [docs/MODULARIZATION_CHANGELOG.md](docs/MODULARIZATION_CHANGELOG.md) - explicação da modularização, fila e fluxo.
+- [docs/TESTING_GUIDE_v2.md](docs/TESTING_GUIDE_v2.md) - testes unitários, integração e stress.
+- [docs/CODE_REVIEW_GUIDE.md](docs/CODE_REVIEW_GUIDE.md) - guia de leitura do código por módulo.
+- [docs/FINAL_REPORT.md](docs/FINAL_REPORT.md) - relatório final da implementação.
+- [docs/FILE_INDEX.txt](docs/FILE_INDEX.txt) - mapa rápido dos arquivos.
 
-## Visao geral
+## Visão geral
 
-A solucao separa infraestrutura de rede, consenso distribuido e operacao:
+O sistema separa infraestrutura de rede, consenso distribuído e operação:
 
-- Servidores de setor (`servidor`) mantem estado local, participam da malha P2P e coordenam despacho de drones.
-- Dashboard (`dashboard`) permite monitorar frota, telemetria e alertas, e emitir despacho manual.
-- Drones (`drone`) registram-se no servidor e executam missoes.
-- Sensor critico (`radar_tcp`) envia eventos de alerta via TCP.
-- Sensor de telemetria (`sensor_tlm`) envia leituras continuas via UDP.
+- Servidores de setor em [servidor/](servidor) mantêm estado local, participam da malha P2P e coordenam despacho de drones.
+- Dashboard em [dashboard/](dashboard) monitora frota, telemetria e alertas, e também envia despacho manual.
+- Drones em [drone/](drone) registram-se no servidor e executam missões.
+- Radar em [radar_tcp/](radar_tcp) envia eventos críticos via TCP.
+- Telemetria em [sensor_tlm/](sensor_tlm) envia leituras contínuas via UDP.
 
-A arquitetura suporta um ou multiplos setores, com failover de cliente por lista de enderecos (`SERVER_ADDRS`).
+A arquitetura suporta um ou vários setores, com failover de cliente por lista de endereços (`SERVER_ADDRS`) e sincronização P2P entre servidores.
 
----
+## Como o sistema atua
 
-## Objetivos tecnicos
+O fluxo principal é o seguinte:
 
-- Disponibilidade: clientes alternam automaticamente entre servidores de contingencia.
-- Escalabilidade horizontal: multiplos setores com gossip e sincronizacao de frota.
-- Robustez operacional: reconexao automatica e tolerancia a desconexao parcial.
-- Simplicidade de deploy: cada componente encapsulado em container.
+1. O sensor ou painel gera um evento.
+2. O servidor enfileira o alerta em uma fila com prioridade.
+3. Uma goroutine consumidora retira o próximo item da fila.
+4. O servidor inicia a exclusão mútua de Ricart-Agrawala.
+5. Quando o consenso é alcançado, o despacho é enviado ao drone local ou remoto.
+6. O gossip replica a frota entre setores e dashboards.
 
----
+Esse desenho evita perda de alerta quando o servidor está ocupado e permite separar entrada de eventos do processamento do despacho.
 
-## Arquitetura atual
+## Arquitetura
 
 ```mermaid
 flowchart LR
@@ -90,70 +86,84 @@ flowchart LR
 
 Notas:
 
-- O trafego entre servidores ocorre na porta `8084/tcp` (rede interna Docker).
-- Clientes usam `SERVER_ADDRS` para failover round-robin.
+- O tráfego entre servidores usa a porta `8084/tcp`.
+- Os clientes usam `SERVER_ADDRS` para failover round-robin.
 
----
+## Componentes e papéis
 
-## Componentes do sistema
+### Servidor
+- Recebe telemetria UDP na porta `8080`.
+- Recebe eventos TCP na porta `8081`.
+- Recebe drones na porta `8082`.
+- Recebe dashboard na porta `8083`.
+- Mantém a malha P2P na porta `8084`.
+- Coordena despacho com Ricart-Agrawala.
+- Usa fila de alertas com prioridade e starvation prevention.
 
-1. `servidor`
-- Recebe telemetria UDP (`8080`) e eventos TCP (`8081`).
-- Recebe drones (`8082`) e dashboard (`8083`).
-- Mantem malha P2P (`8084`) para consenso e gossip.
-- Coordena despacho com Ricart-Agrawala entre setores.
+### Dashboard
+- Mantém conexão TCP com o servidor de setor.
+- Exibe frota global, telemetria e alertas.
+- Permite solicitar missão manual.
+- Faz failover automático entre servidores da lista.
 
-2. `dashboard`
-- Mantem conexao TCP com servidor de setor.
-- Exibe frota global e historico de alertas/telemetria.
-- Permite solicitar missao manual (`CMD`).
-- Faz failover automatico entre servidores da lista.
-
-3. `drone`
+### Drone
 - Registra-se com `REG` e publica estado com `ACK`.
-- Recebe `CMD` de despacho e simula missao.
-- Faz failover automatico entre servidores da lista.
+- Recebe `CMD` de despacho e simula missão.
+- Faz failover automático entre servidores da lista.
 
-4. `radar_tcp`
-- Publica eventos criticos (`EVT`) via TCP.
-- Suporta perfis de sensor (`RADAR`, `AIS`, `QUIMICO`).
-- Faz failover automatico entre servidores da lista.
+### Radar TCP
+- Publica eventos críticos com `EVT` via TCP.
+- Pode representar radar, AIS ou sensor químico.
 
-5. `sensor_tlm`
-- Publica telemetria (`TLM`) via UDP.
+### Sensor TLM
+- Publica telemetria `TLM` via UDP.
 - Recria socket e alterna servidor em falha de envio.
-
----
+- Agora usa intervalo de 2 segundos para reduzir saturação.
 
 ## Tecnologias utilizadas
 
-- Linguagem: Go 1.25
-- Transporte: TCP e UDP
-- Serializacao: JSON
-- Concorrencia: goroutines, mutexes, canais
-- Consenso distribuido: Ricart-Agrawala
-- Sincronizacao de estado: gossip P2P
-- Containerizacao: Docker
-- Orquestracao local: Docker Compose
+- Linguagem: Go 1.25.
+- Transporte: TCP e UDP.
+- Serialização: JSON.
+- Concorrência: goroutines, mutexes e `sync.Cond`.
+- Consenso distribuído: Ricart-Agrawala.
+- Sincronização de estado: gossip P2P.
+- Padrão de fluxo: producer-consumer.
+- Containerização: Docker.
+- Orquestração local: Docker Compose.
 
----
+## Algoritmos e mecanismos
 
-## Protocolo de mensagens
+### Lamport
+O relógio lógico ordena eventos distribuídos e ajuda a comparar requisições entre setores.
 
-Mensagens principais:
+### Ricart-Agrawala
+Garante exclusão mútua entre setores para despacho de drones.
 
-- `REG`: registro de componente (drone/dashboard).
+### Gossip
+Replica o estado da frota entre servidores e dashboards para reduzir divergência de visão.
+
+### Producer-consumer
+Separa o recebimento de alertas do processamento de despacho, reduzindo perda em momentos de carga.
+
+### Fila com prioridade
+- Alerta crítico entra na fila crítica.
+- Alerta normal entra na fila normal.
+- Após 3 ciclos críticos, um alerta normal é promovido para evitar starvation.
+
+## Mensagens principais
+
+- `REG`: registro de componente.
 - `CMD`: comando de despacho.
-- `ACK`: confirmacao e estado de drone.
-- `EVT`: evento critico de sensor (alerta).
-- `TLM`: telemetria numerica.
+- `ACK`: confirmação e estado de drone.
+- `EVT`: evento crítico de sensor.
+- `TLM`: telemetria numérica.
 - `P2P_HELLO`: descoberta de vizinho.
-- `P2P_REQ`: pedido de exclusao mutua.
-- `P2P_CMD`: ordem remota de despacho em outro setor.
-- `ACK` (P2P): autorizacao no consenso.
-- `GOSSIP`: sincronizacao da frota entre setores e dashboards.
+- `P2P_REQ`: pedido de exclusão mútua.
+- `P2P_CMD`: ordem remota de despacho.
+- `GOSSIP`: sincronização da frota.
 
-Formato (campos podem ser opcionais por tipo):
+Campos usados no JSON, conforme o tipo:
 
 - `tipo`
 - `remetente`
@@ -164,21 +174,19 @@ Formato (campos podem ser opcionais por tipo):
 - `posicao`
 - `frota`
 
----
+## Portas
 
-## Conectividade e portas
-
-### Portas internas do servidor (container)
+### Servidor por container
 
 | Protocolo | Porta | Uso |
 | --- | --- | --- |
-| UDP | 8080 | Entrada de telemetria (`sensor_tlm`) |
-| TCP | 8081 | Entrada de eventos (`radar_tcp`) |
+| UDP | 8080 | Entrada de telemetria |
+| TCP | 8081 | Entrada de eventos |
 | TCP | 8082 | Registro e controle de drones |
-| TCP | 8083 | Conexao do dashboard |
+| TCP | 8083 | Conexão do dashboard |
 | TCP | 8084 | Malha P2P entre servidores |
 
-### Mapeamento no host (compose com 3 setores)
+### Exemplo de mapeamento no host
 
 | Setor | UDP 8080 | TCP 8081 | TCP 8082 | TCP 8083 |
 | --- | --- | --- | --- | --- |
@@ -186,33 +194,14 @@ Formato (campos podem ser opcionais por tipo):
 | B | 8090 | 8091 | 8092 | 8093 |
 | C | 8100 | 8101 | 8102 | 8103 |
 
----
+## Resiliência e falhas
 
-## Tolerancia a falhas e resiliencia
-
-1. Failover de clientes (dashboard, drone, radar_tcp)
-- Enderecos em `SERVER_ADDRS` com rotacao round-robin.
-- Queda de um servidor dispara troca para o proximo endereco.
-
-2. Failover de cliente UDP (`sensor_tlm`)
-- Em erro de `Write`, reconecta para o proximo servidor da lista.
-
-3. Reconexao automatica
-- Todos os clientes mantem laço de reconexao sem encerrar processo.
-
-4. KeepAlive TCP
-- Conexoes TCP habilitam keepalive para reduzir conexoes zumbi.
-
-5. Gossip de estado
-- Servidores propagam estado da frota para manter visao convergente.
-
-6. Consenso distribuido
-- Ricart-Agrawala evita disputa concorrente por drones entre setores.
-
-7. Degradacao parcial
-- Com um setor indisponivel, clientes seguem operando pelos demais.
-
----
+1. Os clientes alternam automaticamente entre servidores de contingência.
+2. O `sensor_tlm` tenta o próximo servidor quando ocorre falha de `Write`.
+3. As conexões TCP usam keepalive para reduzir conexões zumbis.
+4. O gossip mantém a visão da frota convergente entre setores.
+5. A exclusão mútua evita disputa concorrente por drones.
+6. Em degradação parcial, o sistema continua operando pelos setores restantes.
 
 ## Estrutura do projeto
 
@@ -220,182 +209,74 @@ Formato (campos podem ser opcionais por tipo):
 .
 ├── docker-compose.yml
 ├── README.md
+├── REFACTORING_README.md
+├── REFACTORING_SUMMARY.md
+├── MODULARIZATION_CHANGELOG.md
+├── CODE_REVIEW_GUIDE.md
+├── TESTING_GUIDE_v2.md
+├── FINAL_REPORT.md
+├── FILE_INDEX.txt
 ├── arquivos_sh/
-│   ├── cleanup.sh
-│   ├── run_servidor.sh
-│   ├── stress_atuadores.sh
-│   ├── stress_clientes.sh
-│   └── stress_sensores.sh
 ├── dashboard/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── main.go
 ├── drone/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── main.go
 ├── radar_tcp/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── main.go
 ├── sensor_tlm/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── main.go
 └── servidor/
-    ├── Dockerfile
-    ├── go.modh
-    └── main.go
 ```
 
----
+## Como executar
 
-## Como executar com Docker Compose
-
-Subir toda a arquitetura local de 3 setores:
+### Com Docker Compose
 
 ```bash
 docker compose up -d --build
 ```
 
-Abrir o dashboard interativo:
-
-```bash
-docker attach dashboard_operador
-```
-
-Sair sem derrubar o container:
-
-- `Ctrl+P`, depois `Ctrl+Q`
-
----
-
-## Como executar por setor (manual)
-
-Script de servidor:
+### Manual por setor
 
 ```bash
 NOME_SETOR=SETOR_NORTE ./arquivos_sh/run_servidor.sh
 ```
 
-Variaveis uteis:
+Variáveis úteis:
 
-- `NOME_SETOR` (ex.: `SETOR_A`, `SETOR_B`)
-- `PEERS` (ex.: `10.0.0.11:8084,10.0.0.12:8084`)
+- `NOME_SETOR`
+- `PEERS`
+- `SERVER_ADDRS`
 
----
+## Testes de stress
 
-## Testes de stress com imagens Docker Hub
+Os scripts em `arquivos_sh/` simulam carga com imagens Docker Hub.
 
-Os scripts de stress usam imagens publicadas no Docker Hub e suportam sobrescrita por variavel.
-
-### Scripts
+Scripts disponíveis:
 
 - `arquivos_sh/stress_sensores.sh`
 - `arquivos_sh/stress_atuadores.sh`
 - `arquivos_sh/stress_clientes.sh`
 - `arquivos_sh/cleanup.sh`
 
-### Variaveis de ambiente (exemplos)
-
-Com tres gateways distintos:
-
-```bash
-export IP_GATEWAY1=172.16.103.8
-export IP_GATEWAY2=172.16.103.9
-export IP_GATEWAY3=172.16.103.10
-```
-
-Quantidade de instancias:
-
-```bash
-export QTD_SALAS=50
-```
-
-Imagens Docker Hub (defaults atuais):
-
-- `IMG_SENSOR_TLM=cleidsonramos/sensor_tlm:latest`
-- `IMG_RADAR_TCP=cleidsonramos/radar_tcp:latest`
-- `IMG_DRONE=cleidsonramos/drone:latest`
-- `IMG_DASHBOARD=cleidsonramos/dashboard:latest`
-
-Execucao:
-
-```bash
-bash arquivos_sh/stress_sensores.sh
-bash arquivos_sh/stress_atuadores.sh
-bash arquivos_sh/stress_clientes.sh
-```
-
-Limpeza:
-
-```bash
-bash arquivos_sh/cleanup.sh
-```
-
----
-
-## Comandos uteis
-
-Estado geral:
+## Comandos úteis
 
 ```bash
 docker compose ps
 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-```
-
-Logs por componente:
-
-```bash
-docker logs -f servidor_ormuz_a
-docker logs -f servidor_ormuz_b
-docker logs -f servidor_ormuz_c
-docker logs -f drone_01
-docker logs -f dashboard_operador
-```
-
-Teste rapido de failover:
-
-```bash
-docker logs -f drone_01
-docker stop servidor_ormuz_a
-```
-
-Parar tudo:
-
-```bash
 docker compose down
 ```
 
-Rebuild completo:
+## Fluxo de documentação
 
-```bash
-docker compose up -d --build
-```
+Se quiser entender o projeto em camadas, a ordem mais útil é:
 
----
+1. Ler esta README para visão geral.
+2. Abrir [docs/README.md](docs/README.md) para navegar pela documentação técnica.
+3. Ler [docs/REFACTORING_README.md](docs/REFACTORING_README.md) para o índice da refatoração.
+4. Ler [docs/MODULARIZATION_CHANGELOG.md](docs/MODULARIZATION_CHANGELOG.md) para a arquitetura.
+5. Consultar [docs/TESTING_GUIDE_v2.md](docs/TESTING_GUIDE_v2.md) para validação.
+6. Usar [docs/CODE_REVIEW_GUIDE.md](docs/CODE_REVIEW_GUIDE.md) para entender o código por módulo.
 
-## Fluxo de desenvolvimento e publicacao
+## Observação sobre documentação oficial
 
-Build local por servico:
-
-```bash
-docker build -t cleidsonramos/servidor:latest ./servidor
-docker build -t cleidsonramos/dashboard:latest ./dashboard
-docker build -t cleidsonramos/drone:latest ./drone
-docker build -t cleidsonramos/radar_tcp:latest ./radar_tcp
-docker build -t cleidsonramos/sensor_tlm:latest ./sensor_tlm
-```
-
-Push para Docker Hub:
-
-```bash
-docker push cleidsonramos/servidor:latest
-docker push cleidsonramos/dashboard:latest
-docker push cleidsonramos/drone:latest
-docker push cleidsonramos/radar_tcp:latest
-docker push cleidsonramos/sensor_tlm:latest
-```
+Sim, essa separação é comum em documentação oficial: uma página principal curta e estável, e páginas auxiliares por tema, como arquitetura, testes, release notes e guia de revisão. É exatamente o que este repositório agora segue.
 
 ---
 

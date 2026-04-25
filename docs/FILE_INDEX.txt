@@ -3,8 +3,9 @@
 ================================================================================
 
 🎯 COMECE POR AQUI:
-  1. FINAL_REPORT.md                    ← Sumário executivo da refatoração
-  2. REFACTORING_README.md              ← Quick start + documentação index
+  1. README.md                          ← Portal da documentação técnica
+  2. FINAL_REPORT.md                    ← Sumário executivo da refatoração
+  3. REFACTORING_README.md              ← Quick start + documentação index
 
 📚 DOCUMENTAÇÃO TÉCNICA:
   1. REFACTORING_SUMMARY.md             ← Resumo com métricas e instruções deploy
@@ -37,8 +38,9 @@
   └── go.sum               (updated)   - Dependencies (if needed)
 
 🎓 GUIAS OPERACIONAIS:
+  ├── README.md                        - Portal da documentação técnica
   ├── FINAL_REPORT.md                  - Relatório final de implementação
-  ├── REFACTORING_README.md            - README principal
+  ├── REFACTORING_README.md            - README de refatoração
   ├── REFACTORING_SUMMARY.md           - Sumário com métricass
   ├── MODULARIZATION_CHANGELOG.md      - Changelog técnico
   ├── CODE_REVIEW_GUIDE.md             - Guia de revisão
@@ -48,7 +50,7 @@
 🚀 QUICK START:
 
 1. Listar todos os ficheiros:
-   ls -lh servidor/*.go sensor_tlm/main.go *.md
+   ls -lh servidor/*.go sensor_tlm/main.go *.md docs/*.md docs/*.txt
 
 2. Compilar localmente:
    cd servidor && go build -o servidor_local
