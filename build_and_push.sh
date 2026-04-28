@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Define o seu utilizador do Docker Hub
 DOCKER_USER="cleidsonramos"
 
