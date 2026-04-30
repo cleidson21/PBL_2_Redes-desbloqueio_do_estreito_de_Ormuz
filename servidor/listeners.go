@@ -56,10 +56,14 @@ func ListenSensoresTLM(gs *GlobalState) {
 	}
 	defer conn.Close()
 
-	// Variáveis de estado para a Histerese Climática
-	estadoVentoAlto := false
-	limiteSuperior := 70.0  // km/h - Dispara alerta
-	limiteInferior := 50.0  // km/h - Desativa alerta
+	// Mapa para rastrear estado da histerese por posição/sensor (não global!)
+	type HisteriseEstado struct {
+		estadoVentoAlto bool
+		ultimoAlertaID  string
+	}
+	estadosHisterese := make(map[string]HisteriseEstado)
+	limiteSuperior := 70.0 // km/h - Dispara alerta
+	limiteInferior := 50.0 // km/h - Desativa alerta
 
 	buffer := make([]byte, 1024)
 	for {
@@ -72,22 +76,31 @@ func ListenSensoresTLM(gs *GlobalState) {
 			continue
 		}
 		msg.Remetente = EnriquecerIdentidade(gs, msg.Remetente)
-		fmt.Printf("📡 TELEMETRIA recebida [%s]: %s\n", msg.Remetente, msg.Valor)
+		fmt.Printf("📡 TELEMETRIA recebida [%s]: %s km/h\n", msg.Remetente, msg.Valor)
 
-		// ===== HISTERESE CLIMÁTICA: Detecção de Vento Forte =====
+		// ===== HISTERESE CLIMÁTICA: Detecção de Vento Forte (PER-SENSOR) =====
 		valorAtualVento, errParse := strconv.ParseFloat(msg.Valor, 64)
-		if errParse == nil {
+		if errParse == nil && msg.Posicao != "" {
+			// Recupera estado anterior deste sensor
+			estado, existe := estadosHisterese[msg.Remetente]
+			if !existe {
+				estado = HisteriseEstado{estadoVentoAlto: false, ultimoAlertaID: ""}
+			}
+
 			// TRANSIÇÃO: Vento fraco → Vento forte
-			if !estadoVentoAlto && valorAtualVento > limiteSuperior {
-				estadoVentoAlto = true
-				fmt.Printf("  🌪️  [ALERTA CLIMÁTICO] Vento forte detetado (%.2f km/h) em %s. Acionando patrulha drone!\n", valorAtualVento, msg.Posicao)
-				// Enfileirar como alerta normal (prioridade 1) para despacho de drone
+			if !estado.estadoVentoAlto && valorAtualVento > limiteSuperior {
+				estado.estadoVentoAlto = true
+				estado.ultimoAlertaID = fmt.Sprintf("%d", time.Now().UnixNano())
+				estadosHisterese[msg.Remetente] = estado
+
+				fmt.Printf("  🌪️  [ALERTA CLIMÁTICO] Vento forte detetado (%.2f km/h) em %s (sensor: %s). Acionando patrulha drone!\n", valorAtualVento, msg.Posicao, msg.Remetente)
 				gs.AlertQueue.EnqueueAlert(msg.Posicao, 1)
 
-			} else if estadoVentoAlto && valorAtualVento < limiteInferior {
+			} else if estado.estadoVentoAlto && valorAtualVento < limiteInferior {
 				// TRANSIÇÃO: Vento forte → Vento fraco
-				estadoVentoAlto = false
-				fmt.Printf("  ✅ [CLIMA NORMALIZADO] O vento acalmou em %s (%.2f km/h). Patrulha retorna ao normal.\n", msg.Posicao, valorAtualVento)
+				estado.estadoVentoAlto = false
+				estadosHisterese[msg.Remetente] = estado
+				fmt.Printf("  ✅ [CLIMA NORMALIZADO] O vento acalmou em %s (%.2f km/h, sensor: %s).\n", msg.Posicao, valorAtualVento, msg.Remetente)
 			}
 		}
 		// ===== FIM DA HISTERESE CLIMÁTICA =====

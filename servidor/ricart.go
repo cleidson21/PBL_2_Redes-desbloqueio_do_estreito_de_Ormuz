@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"time"
 )
 
 // IniciarRequisicaoDrone inicia o protocolo Ricart-Agrawala para obter acesso exclusivo
@@ -50,6 +51,9 @@ func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada s
 		fmt.Fprintf(conn, "%s\n", payload)
 	}
 	gs.VizinhosMu.RUnlock()
+
+	// Inicia monitor de timeout para evitar deadlock permanente
+	go MonitorConsensoComTimeout(gs, 15*time.Second)
 }
 
 // AvaliarPedidoVizinho avalia se deve colocar vizinho na fila ou enviar ACK
@@ -218,4 +222,19 @@ func LiberarDrone(gs *GlobalState) {
 	gs.VizinhosMu.RUnlock()
 
 	gs.FilaDeEspera = nil
+}
+
+// MonitorConsensoComTimeout monitora se o consenso foi alcançado dentro do timeout
+// Se timeout expirar e ainda está ESPERANDO, reseta para LIVRE para permitir retry
+func MonitorConsensoComTimeout(gs *GlobalState, timeout time.Duration) {
+	time.Sleep(timeout)
+
+	gs.RicartMu.Lock()
+	defer gs.RicartMu.Unlock()
+
+	if gs.EstadoRicart == "ESPERANDO" {
+		fmt.Printf("⏱️ TIMEOUT: Ricart-Agrawala timeout após %v. Resetando para LIVRE para tentar novamente.\n", timeout)
+		gs.EstadoRicart = "LIVRE"
+		gs.FilaDeEspera = nil
+	}
 }
