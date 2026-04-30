@@ -107,9 +107,10 @@ func (aq *AlertQueue) QueueStats() (criticalCount, normalCount int) {
 // StartConsumer inicia a goroutine consumidora que processa alertas da fila
 func (aq *AlertQueue) StartConsumer(gs *GlobalState) {
 	go func() {
+		fmt.Println("✅ Consumer da fila INICIADO e aguardando alertas...")
 		for {
 			alert := aq.DequeueAlert()
-			fmt.Printf("🎯 Consumer processando alerta: prioridade=%d, coordenada=%s\n", alert.Prioridade, alert.Coordenada)
+			fmt.Printf("🎯 Consumer processando alerta: prioridade=%d, coordenada=%s, ID=%s\n", alert.Prioridade, alert.Coordenada, alert.ID)
 
 			// Inicia requisição de drone com a prioridade do alerta
 			IniciarRequisicaoDrone(gs, alert.Prioridade, alert.Coordenada)

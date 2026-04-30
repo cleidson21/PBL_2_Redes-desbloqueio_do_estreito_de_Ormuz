@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -87,6 +88,10 @@ func main() {
 	const THRESHOLD = 70.0
 	const CONTADOR_LIMITE = 2
 
+	// Coordenadas simuladas do sensor (Estreito de Ormuz)
+	posicaoLat := 26.0 + rand.Float64()*2.0 // 26.0 a 28.0
+	posicaoLng := 56.0 + rand.Float64()*2.0 // 56.0 a 58.0
+
 	for {
 		// Inverte o sentido quando atinge os limites para manter a oscilação.
 		valorAtual += variacao
@@ -115,6 +120,7 @@ func main() {
 			Tipo:      "TLM",
 			Remetente: sensorID,
 			Valor:     fmt.Sprintf("%.2f", valorAtual),
+			Posicao:   fmt.Sprintf("%.4f,%.4f", posicaoLat, posicaoLng), // Coordenadas do sensor
 		}
 
 		payload, errMarshal := json.Marshal(mensagem)

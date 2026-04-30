@@ -35,9 +35,11 @@ func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada s
 	qtdVizinhos := len(gs.Vizinhos)
 	if qtdVizinhos == 0 {
 		gs.VizinhosMu.RUnlock()
+		fmt.Printf("⚠️ [RICART] Sem vizinhos conectados! Alcançando consenso local instantaneamente.\n")
 		VerificarConsenso(gs)
 		return
 	}
+	fmt.Printf("📡 [RICART] Enviando requisição para %d vizinhos...\n", qtdVizinhos)
 
 	msgReq := Mensagem{
 		Tipo:       "P2P_REQ",
@@ -120,10 +122,12 @@ func VerificarConsenso(gs *GlobalState) {
 	vivos := len(gs.Vizinhos)
 	gs.VizinhosMu.RUnlock()
 
+	fmt.Printf("🔍 [RICART DEBUG] Estado: %s | ACKs: %d/%d | FilaEspera: %d\n", gs.EstadoRicart, gs.AcksRecebidos, vivos, len(gs.FilaDeEspera))
+
 	if gs.AcksRecebidos >= vivos {
 		gs.EstadoRicart = "USANDO"
 		gs.ContadorAging = 0
-		fmt.Printf("🏆 CONSENSO ALCANÇADO! Setor %s ganhou a Exclusão Mútua.\n", gs.MeuSetor)
+		fmt.Printf("🏆 CONSENSO ALCANÇADO! Setor %s ganhou a Exclusão Mútua (ACKs: %d, Vizinhos: %d).\n", gs.MeuSetor, gs.AcksRecebidos, vivos)
 
 		// Executa despacho em goroutine separada
 		go ExecutarDespacho(gs, gs.AlvoAtual)
@@ -174,8 +178,14 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 				Posicao: coordenada,
 			}
 			payload, _ := json.Marshal(cmdMsg)
-			fmt.Fprintf(connDrone, "%s\n", payload)
-			fmt.Printf("🚀 Ordem de despacho enviada DIRETAMENTE ao drone local %s!\n", droneEscolhido)
+			n, err := fmt.Fprintf(connDrone, "%s\n", payload)
+			if err != nil {
+				fmt.Printf("❌ Erro ao enviar comando ao drone local %s: %v (bytes: %d)\n", droneEscolhido, err, n)
+			} else {
+				fmt.Printf("🚀 Ordem de despacho enviada DIRETAMENTE ao drone local %s! (bytes: %d)\n", droneEscolhido, n)
+			}
+		} else {
+			fmt.Printf("⚠️ Drone local %s não está conectado em DronesLocais!\n", droneEscolhido)
 		}
 	} else {
 		// Drone remoto
@@ -191,8 +201,14 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 				Posicao: coordenada,
 			}
 			payload, _ := json.Marshal(cmdMsg)
-			fmt.Fprintf(connVizinho, "%s\n", payload)
-			fmt.Printf("📡 Ordem de despacho enviada VIA P2P para o setor %s comandar o drone!\n", setorDoDrone)
+			n, err := fmt.Fprintf(connVizinho, "%s\n", payload)
+			if err != nil {
+				fmt.Printf("❌ Erro ao enviar P2P_CMD para setor %s: %v (bytes: %d)\n", setorDoDrone, err, n)
+			} else {
+				fmt.Printf("📡 Ordem de despacho enviada VIA P2P para o setor %s comandar o drone! (bytes: %d)\n", setorDoDrone, n)
+			}
+		} else {
+			fmt.Printf("⚠️ Vizinho %s não está conectado em Vizinhos!\n", setorDoDrone)
 		}
 	}
 
