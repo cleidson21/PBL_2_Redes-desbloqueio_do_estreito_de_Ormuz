@@ -22,6 +22,8 @@ func ListenP2P(gs *GlobalState) {
 		if err != nil {
 			continue
 		}
+		// 🔴 CORREÇÃO: Habilita KeepAlive para evitar que Docker bridge mate conexões silenciosas
+		HabilitarKeepAlive(conn)
 		go ManipularMensagemP2P(gs, conn)
 	}
 }
@@ -46,6 +48,9 @@ func reconectarAVizinho(gs *GlobalState, addr string) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
+
+		// 🔴 CORREÇÃO: Habilita KeepAlive para evitar que Docker bridge mate conexões silenciosas
+		HabilitarKeepAlive(conn)
 
 		msgHello := Mensagem{
 			Tipo:      "P2P_HELLO",

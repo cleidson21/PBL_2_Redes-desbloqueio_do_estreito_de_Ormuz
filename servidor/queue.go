@@ -49,52 +49,38 @@ func (aq *AlertQueue) EnqueueAlert(coordenada string, prioridade int) bool {
 // DequeueAlert remove e retorna o próximo alerta respeitando prioridade e starvation prevention
 // Bloqueia até que um alerta esteja disponível
 func (aq *AlertQueue) DequeueAlert() Alert {
-	for {
-		aq.mu.Lock()
+	aq.mu.Lock()
+	defer aq.mu.Unlock() // Garante que a fila será SEMPRE destravada no final!
 
-		// Regra de starvation prevention: se N alertas críticos foram processados,
-		// promoção automática de um alerta normal para crítico
-		if len(aq.normal) > 0 && aq.processedCount >= aq.starveThreshold {
-			alert := aq.normal[0]
-			aq.normal = aq.normal[1:]
-			alert.Prioridade = 2  // promoção
-			aq.processedCount = 0 // reset contador
-			aq.mu.Unlock()
-
-			fmt.Printf("🚀 Starvation Prevention: alerta normal foi PROMOVIDO para CRÍTICO!\n")
-			return alert
-		}
-
-		// Se há alertas críticos, sempre processa primeiro
-		if len(aq.critical) > 0 {
-			alert := aq.critical[0]
-			aq.critical = aq.critical[1:]
-			aq.processedCount++ // incrementa contador de ciclos críticos
-			aq.mu.Unlock()
-
-			fmt.Printf("✅ Processando alerta CRÍTICO: %s\n", alert.Coordenada)
-			return alert
-		}
-
-		// Caso contrário, processa alerta normal se existir
-		if len(aq.normal) > 0 {
-			alert := aq.normal[0]
-			aq.normal = aq.normal[1:]
-
-			// Incrementa starvation counter se há críticos esperando
-			if len(aq.critical) > 0 {
-				alert.StarveCounter++
-			}
-
-			aq.mu.Unlock()
-
-			fmt.Printf("✅ Processando alerta NORMAL: %s\n", alert.Coordenada)
-			return alert
-		}
-
-		// Nenhum alerta disponível; aguarda sinal
-		aq.notEmpty.Wait()
+	// Enquanto ambas as filas estiverem vazias, durma
+	for len(aq.critical) == 0 && len(aq.normal) == 0 {
+		aq.notEmpty.Wait() // Destrava aq.mu, dorme. Quando acorda, TRAVA aq.mu novamente e reavalia o "for"
 	}
+
+	// Regra 1: Starvation Prevention (Normal -> Crítico)
+	if len(aq.normal) > 0 && aq.processedCount >= aq.starveThreshold {
+		alert := aq.normal[0]
+		aq.normal = aq.normal[1:]
+		alert.Prioridade = 2  // Promoção
+		aq.processedCount = 0 // Reset
+		fmt.Printf("🚀 Starvation Prevention: alerta normal foi PROMOVIDO para CRÍTICO!\n")
+		return alert
+	}
+
+	// Regra 2: Alertas Críticos têm preferência
+	if len(aq.critical) > 0 {
+		alert := aq.critical[0]
+		aq.critical = aq.critical[1:]
+		aq.processedCount++
+		fmt.Printf("✅ Processando alerta CRÍTICO: %s\n", alert.Coordenada)
+		return alert
+	}
+
+	// Regra 3: Alertas Normais (Sobrou apenas este)
+	alert := aq.normal[0]
+	aq.normal = aq.normal[1:]
+	fmt.Printf("✅ Processando alerta NORMAL: %s\n", alert.Coordenada)
+	return alert
 }
 
 // QueueStats retorna estatísticas da fila
@@ -109,13 +95,12 @@ func (aq *AlertQueue) StartConsumer(gs *GlobalState) {
 	go func() {
 		fmt.Println("✅ Consumer da fila INICIADO e aguardando alertas...")
 		for {
+			// O Consumidor pega o alerta da fila
 			alert := aq.DequeueAlert()
-			fmt.Printf("🎯 Consumer processando alerta: prioridade=%d, coordenada=%s, ID=%s\n", alert.Prioridade, alert.Coordenada, alert.ID)
+			fmt.Printf("🎯 Consumer processando alerta: prioridade=%d, coordenada=%s\n", alert.Prioridade, alert.Coordenada)
 
-			// Inicia requisição de drone com a prioridade do alerta
+			// E chama o Ricart. A própria função do Ricart já sabe esperar educadamente se estiver ocupada!
 			IniciarRequisicaoDrone(gs, alert.Prioridade, alert.Coordenada)
-			// Pequeno delay para evitar processamento muito rápido
-			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 }

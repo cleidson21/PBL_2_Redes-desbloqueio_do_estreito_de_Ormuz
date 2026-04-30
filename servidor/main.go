@@ -46,7 +46,25 @@ func main() {
 		for {
 			time.Sleep(10 * time.Second)
 			critCount, normCount := gs.AlertQueue.QueueStats()
-			fmt.Printf("📊 [QUEUE STATUS] Críticos: %d | Normais: %d\n", critCount, normCount)
+
+			gs.FrotaMu.RLock()
+			qtdDronesLivres := 0
+			qtdDronesEmMissao := 0
+			qtdDronesDesconectados := 0
+			for _, estado := range gs.FrotaGlobal {
+				switch estado.Status {
+				case "LIVRE":
+					qtdDronesLivres++
+				case "EM_MISSAO":
+					qtdDronesEmMissao++
+				case "DESCONECTADO":
+					qtdDronesDesconectados++
+				}
+			}
+			gs.FrotaMu.RUnlock()
+
+			fmt.Printf("📊 [QUEUE STATUS] Críticos: %d | Normais: %d | Drones: ✅%d | 🚁%d | ❌%d\n",
+				critCount, normCount, qtdDronesLivres, qtdDronesEmMissao, qtdDronesDesconectados)
 		}
 	}()
 

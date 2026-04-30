@@ -9,12 +9,18 @@ import (
 
 // IniciarRequisicaoDrone inicia o protocolo Ricart-Agrawala para obter acesso exclusivo
 func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada string) {
-	gs.RicartMu.Lock()
-	if gs.EstadoRicart != "LIVRE" {
+	// 🔴 CORREÇÃO: Aguardar SINCRONAMENTE até Ricart estar LIVRE
+	// Isso evita que alertas sejam descartados quando Ricart está ocupado
+	for {
+		gs.RicartMu.Lock()
+		if gs.EstadoRicart == "LIVRE" {
+			break // Saiu do mutex com LOCK ainda ativo! Vai usar abaixo
+		}
 		gs.RicartMu.Unlock()
-		fmt.Println("⚠️ Já existe uma requisição em andamento neste setor. A aguardar...")
-		return
+		time.Sleep(50 * time.Millisecond) // Espera ocupada curta
 	}
+
+	// Neste ponto, RicartMu está LOCKED e EstadoRicart == "LIVRE"
 
 	// Aplicar aging: se perdeu muitas vezes, elevar prioridade
 	if gs.ContadorAging >= 3 {
@@ -140,13 +146,17 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 	var setorDoDrone string
 
 	gs.FrotaMu.RLock()
+	qtdDronesLivres := 0
 	for id, estado := range gs.FrotaGlobal {
 		if estado.Status == "LIVRE" {
-			droneEscolhido = id
-			setorDoDrone = estado.Setor
-			break
+			qtdDronesLivres++
+			if droneEscolhido == "" {
+				droneEscolhido = id
+				setorDoDrone = estado.Setor
+			}
 		}
 	}
+	fmt.Printf("🎯 Procurando drone na rede: %d drones LIVRES encontrados\n", qtdDronesLivres)
 	gs.FrotaMu.RUnlock()
 
 	if droneEscolhido == "" {
@@ -162,6 +172,7 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 	if estado, ok := gs.FrotaGlobal[droneEscolhido]; ok {
 		estado.Status = "EM_MISSAO"
 		gs.FrotaGlobal[droneEscolhido] = estado
+		fmt.Printf("🚁 Drone %s marcado como EM_MISSAO\n", droneEscolhido)
 	}
 	gs.FrotaMu.Unlock()
 
@@ -182,7 +193,7 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 			if err != nil {
 				fmt.Printf("❌ Erro ao enviar comando ao drone local %s: %v (bytes: %d)\n", droneEscolhido, err, n)
 			} else {
-				fmt.Printf("🚀 Ordem de despacho enviada DIRETAMENTE ao drone local %s! (bytes: %d)\n", droneEscolhido, n)
+				fmt.Printf("🚀 Ordem de despacho enviada DIRETAMENTE ao drone local %s para %s! (bytes: %d)\n", droneEscolhido, coordenada, n)
 			}
 		} else {
 			fmt.Printf("⚠️ Drone local %s não está conectado em DronesLocais!\n", droneEscolhido)
@@ -205,7 +216,7 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 			if err != nil {
 				fmt.Printf("❌ Erro ao enviar P2P_CMD para setor %s: %v (bytes: %d)\n", setorDoDrone, err, n)
 			} else {
-				fmt.Printf("📡 Ordem de despacho enviada VIA P2P para o setor %s comandar o drone! (bytes: %d)\n", setorDoDrone, n)
+				fmt.Printf("📡 Ordem de despacho enviada VIA P2P para o setor %s comandar %s para %s! (bytes: %d)\n", setorDoDrone, droneEscolhido, coordenada, n)
 			}
 		} else {
 			fmt.Printf("⚠️ Vizinho %s não está conectado em Vizinhos!\n", setorDoDrone)

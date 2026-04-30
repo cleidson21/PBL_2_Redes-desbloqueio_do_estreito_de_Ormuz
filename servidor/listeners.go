@@ -195,7 +195,15 @@ func ListenDrones(gs *GlobalState) {
 					gs.DronesMu.Unlock()
 
 					gs.FrotaMu.Lock()
-					gs.FrotaGlobal[droneID] = EstadoDrone{Status: "LIVRE", Setor: gs.MeuSetor}
+					// Se drone já existia como DESCONECTADO, restaura para LIVRE
+					if estado, existe := gs.FrotaGlobal[droneID]; existe && estado.Status == "DESCONECTADO" {
+						fmt.Printf("♻️ [%s] Drone RECONECTADO! Restaurando status para LIVRE.\n", droneID)
+						estado.Status = "LIVRE"
+						gs.FrotaGlobal[droneID] = estado
+					} else if !existe {
+						// Novo drone
+						gs.FrotaGlobal[droneID] = EstadoDrone{Status: "LIVRE", Setor: gs.MeuSetor}
+					}
 					gs.FrotaMu.Unlock()
 
 					fmt.Printf("🚁 [%s] Drone registado na base local!\n", droneID)
@@ -203,12 +211,18 @@ func ListenDrones(gs *GlobalState) {
 				} else if msg.Tipo == "ACK" {
 					gs.FrotaMu.Lock()
 					if estado, existe := gs.FrotaGlobal[msg.Remetente]; existe {
+						statusAnterior := estado.Status
 						estado.Status = msg.Valor
 						gs.FrotaGlobal[msg.Remetente] = estado
+						if statusAnterior != msg.Valor {
+							fmt.Printf("🔄 [%s] Status atualizado: %s → %s\n", msg.Remetente, statusAnterior, msg.Valor)
+						}
+						gs.FrotaMu.Unlock()
+						AtualizarDashboards(gs, msg)
+					} else {
+						// ✅ AGORA SEMPRE libertar a memória, mesmo se o drone não existir!
+						gs.FrotaMu.Unlock()
 					}
-					gs.FrotaMu.Unlock()
-
-					AtualizarDashboards(gs, msg)
 				}
 			}
 
@@ -221,6 +235,7 @@ func ListenDrones(gs *GlobalState) {
 				if estado, existe := gs.FrotaGlobal[droneID]; existe {
 					estado.Status = "DESCONECTADO"
 					gs.FrotaGlobal[droneID] = estado
+					fmt.Printf("❌ [%s] Drone desconectado marcado como DESCONECTADO na frota.\n", droneID)
 				}
 				gs.FrotaMu.Unlock()
 			}
