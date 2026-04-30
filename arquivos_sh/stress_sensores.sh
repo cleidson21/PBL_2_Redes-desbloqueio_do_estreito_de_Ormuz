@@ -18,7 +18,7 @@ echo "Imagens: $IMG_SENSOR_TLM | $IMG_RADAR_TCP"
 docker pull "$IMG_SENSOR_TLM" >/dev/null
 docker pull "$IMG_RADAR_TCP" >/dev/null
 
-for i in $(seq 1 $QTD_SALAS); do
+for i in $(seq 1 "$QTD_SALAS"); do
     # Sensor UDP de telemetria TLM.
     docker run -d --name "stress_sensor_tlm_$i" \
         -e SERVER_ADDRS="$IP_GATEWAY1:8080,$IP_GATEWAY2:8080,$IP_GATEWAY3:8080,$IP_GATEWAY4:8080" \

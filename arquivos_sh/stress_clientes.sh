@@ -6,7 +6,7 @@ set -e
 IP_GATEWAY1="${IP_GATEWAY1:-172.16.103.11}"
 IP_GATEWAY2="${IP_GATEWAY2:-172.16.103.12}"
 IP_GATEWAY3="${IP_GATEWAY3:-172.16.103.10}"
-QTD_SALAS="${QTD_SALAS:1}"
+QTD_SALAS="${QTD_SALAS:-1}"
 IMG_DASHBOARD="${IMG_DASHBOARD:-cleidsonramos/dashboard:latest}"
 
 echo "🧠 Iniciando dashboards de controle para $QTD_SALAS setores..."

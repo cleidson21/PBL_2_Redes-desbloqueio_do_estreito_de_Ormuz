@@ -16,7 +16,7 @@ echo "Imagem: $IMG_DRONE"
 
 docker pull "$IMG_DRONE" >/dev/null
 
-for i in $(seq 1 $QTD_SALAS); do
+for i in $(seq 1 "$QTD_SALAS"); do
     # Drone para cada setor.
     docker run -d --name "stress_drone_$i" \
         -e SERVER_ADDRS="$IP_GATEWAY1:8082,$IP_GATEWAY2:8082,$IP_GATEWAY3:8082,$IP_GATEWAY4:8082" \
