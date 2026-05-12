@@ -171,6 +171,7 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 	gs.FrotaMu.Lock()
 	if estado, ok := gs.FrotaGlobal[droneEscolhido]; ok {
 		estado.Status = "EM_MISSAO"
+		estado.SeenAt = time.Now().UnixNano()
 		gs.FrotaGlobal[droneEscolhido] = estado
 		fmt.Printf("🚁 Drone %s marcado como EM_MISSAO\n", droneEscolhido)
 	}
@@ -192,11 +193,25 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 			n, err := fmt.Fprintf(connDrone, "%s\n", payload)
 			if err != nil {
 				fmt.Printf("❌ Erro ao enviar comando ao drone local %s: %v (bytes: %d)\n", droneEscolhido, err, n)
+				gs.FrotaMu.Lock()
+				if estado, existe := gs.FrotaGlobal[droneEscolhido]; existe {
+					estado.Status = "LIVRE"
+					estado.SeenAt = time.Now().UnixNano()
+					gs.FrotaGlobal[droneEscolhido] = estado
+				}
+				gs.FrotaMu.Unlock()
 			} else {
 				fmt.Printf("🚀 Ordem de despacho enviada DIRETAMENTE ao drone local %s para %s! (bytes: %d)\n", droneEscolhido, coordenada, n)
 			}
 		} else {
 			fmt.Printf("⚠️ Drone local %s não está conectado em DronesLocais!\n", droneEscolhido)
+			gs.FrotaMu.Lock()
+			if estado, existe := gs.FrotaGlobal[droneEscolhido]; existe {
+				estado.Status = "LIVRE"
+				estado.SeenAt = time.Now().UnixNano()
+				gs.FrotaGlobal[droneEscolhido] = estado
+			}
+			gs.FrotaMu.Unlock()
 		}
 	} else {
 		// Drone remoto
@@ -215,11 +230,25 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 			n, err := fmt.Fprintf(connVizinho, "%s\n", payload)
 			if err != nil {
 				fmt.Printf("❌ Erro ao enviar P2P_CMD para setor %s: %v (bytes: %d)\n", setorDoDrone, err, n)
+				gs.FrotaMu.Lock()
+				if estado, existe := gs.FrotaGlobal[droneEscolhido]; existe {
+					estado.Status = "LIVRE"
+					estado.SeenAt = time.Now().UnixNano()
+					gs.FrotaGlobal[droneEscolhido] = estado
+				}
+				gs.FrotaMu.Unlock()
 			} else {
 				fmt.Printf("📡 Ordem de despacho enviada VIA P2P para o setor %s comandar %s para %s! (bytes: %d)\n", setorDoDrone, droneEscolhido, coordenada, n)
 			}
 		} else {
 			fmt.Printf("⚠️ Vizinho %s não está conectado em Vizinhos!\n", setorDoDrone)
+			gs.FrotaMu.Lock()
+			if estado, existe := gs.FrotaGlobal[droneEscolhido]; existe {
+				estado.Status = "LIVRE"
+				estado.SeenAt = time.Now().UnixNano()
+				gs.FrotaGlobal[droneEscolhido] = estado
+			}
+			gs.FrotaMu.Unlock()
 		}
 	}
 

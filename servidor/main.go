@@ -45,6 +45,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(10 * time.Second)
+			LimparFrotaExpirada(gs, 45*time.Second)
 			critCount, normCount := gs.AlertQueue.QueueStats()
 
 			gs.FrotaMu.RLock()

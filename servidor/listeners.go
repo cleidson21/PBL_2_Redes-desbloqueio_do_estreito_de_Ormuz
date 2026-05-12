@@ -46,6 +46,13 @@ func AtualizarDashboards(gs *GlobalState, msg Mensagem) {
 	}
 }
 
+func registrarEstadoDrone(gs *GlobalState, droneID string, estado EstadoDrone) {
+	if estado.SeenAt == 0 {
+		estado.SeenAt = time.Now().UnixNano()
+	}
+	gs.FrotaGlobal[droneID] = estado
+}
+
 // ListenSensoresTLM escuta telemetria via UDP
 func ListenSensoresTLM(gs *GlobalState) {
 	addr, _ := net.ResolveUDPAddr("udp", ":8080")
@@ -99,7 +106,9 @@ func ListenSensoresTLM(gs *GlobalState) {
 					posicao = "26.5,56.5" // Centro do Estreito de Ormuz
 				}
 				fmt.Printf("  🌪️  [ALERTA CLIMÁTICO] Vento forte detetado (%.2f km/h) em %s (sensor: %s). Acionando patrulha drone!\n", valorAtualVento, posicao, msg.Remetente)
-				gs.AlertQueue.EnqueueAlert(posicao, 1)
+				if !gs.AlertQueue.EnqueueAlert(posicao, 1) {
+					fmt.Printf("⚠️ [ALERTA CLIMÁTICO] Falha ao enfileirar alerta para %s\n", posicao)
+				}
 
 			} else if estado.estadoVentoAlto && valorAtualVento < limiteInferior {
 				// TRANSIÇÃO: Vento forte → Vento fraco
@@ -151,7 +160,9 @@ func ListenRadarTCP(gs *GlobalState) {
 					fmt.Printf("🚨 ALERTA CRÍTICO DETETADO [%s]: %s em %s\n", msg.Remetente, msg.Valor, msg.Posicao)
 					AtualizarDashboards(gs, msg)
 					// Enfileirar como alerta crítico (prioridade 2)
-					gs.AlertQueue.EnqueueAlert(msg.Posicao, 2)
+					if !gs.AlertQueue.EnqueueAlert(msg.Posicao, 2) {
+						fmt.Printf("⚠️ [%s] Alerta crítico rejeitado por fila cheia: %s\n", msg.Remetente, msg.Posicao)
+					}
 				}
 			}
 		}(conn)
@@ -199,10 +210,11 @@ func ListenDrones(gs *GlobalState) {
 					if estado, existe := gs.FrotaGlobal[droneID]; existe && estado.Status == "DESCONECTADO" {
 						fmt.Printf("♻️ [%s] Drone RECONECTADO! Restaurando status para LIVRE.\n", droneID)
 						estado.Status = "LIVRE"
-						gs.FrotaGlobal[droneID] = estado
+						estado.SeenAt = time.Now().UnixNano()
+						registrarEstadoDrone(gs, droneID, estado)
 					} else if !existe {
 						// Novo drone
-						gs.FrotaGlobal[droneID] = EstadoDrone{Status: "LIVRE", Setor: gs.MeuSetor}
+						registrarEstadoDrone(gs, droneID, EstadoDrone{Status: "LIVRE", Setor: gs.MeuSetor, SeenAt: time.Now().UnixNano()})
 					}
 					gs.FrotaMu.Unlock()
 
@@ -213,7 +225,8 @@ func ListenDrones(gs *GlobalState) {
 					if estado, existe := gs.FrotaGlobal[msg.Remetente]; existe {
 						statusAnterior := estado.Status
 						estado.Status = msg.Valor
-						gs.FrotaGlobal[msg.Remetente] = estado
+						estado.SeenAt = time.Now().UnixNano()
+						registrarEstadoDrone(gs, msg.Remetente, estado)
 						if statusAnterior != msg.Valor {
 							fmt.Printf("🔄 [%s] Status atualizado: %s → %s\n", msg.Remetente, statusAnterior, msg.Valor)
 						}
@@ -234,7 +247,8 @@ func ListenDrones(gs *GlobalState) {
 				gs.FrotaMu.Lock()
 				if estado, existe := gs.FrotaGlobal[droneID]; existe {
 					estado.Status = "DESCONECTADO"
-					gs.FrotaGlobal[droneID] = estado
+					estado.SeenAt = time.Now().UnixNano()
+					registrarEstadoDrone(gs, droneID, estado)
 					fmt.Printf("❌ [%s] Drone desconectado marcado como DESCONECTADO na frota.\n", droneID)
 				}
 				gs.FrotaMu.Unlock()
@@ -285,9 +299,29 @@ func ListenDashboardTCP(gs *GlobalState) {
 				if msg.Tipo == "CMD" && msg.Acao == "REQUISICAO_MANUAL" {
 					fmt.Printf("👨‍💻 Operador solicitou inspeção manual para: %s\n", msg.Posicao)
 					// Enfileirar como alerta normal (prioridade 1)
-					gs.AlertQueue.EnqueueAlert(msg.Posicao, 1)
+					if !gs.AlertQueue.EnqueueAlert(msg.Posicao, 1) {
+						fmt.Printf("⚠️ [%s] Alerta manual rejeitado por fila cheia: %s\n", msg.Remetente, msg.Posicao)
+					}
 				}
 			}
 		}(conn)
+	}
+}
+
+// LimparFrotaExpirada remove drones sem atualização recente para evitar fantasmas após failover.
+func LimparFrotaExpirada(gs *GlobalState, ttl time.Duration) {
+	limite := time.Now().Add(-ttl).UnixNano()
+
+	gs.FrotaMu.Lock()
+	defer gs.FrotaMu.Unlock()
+
+	for idDrone, estadoDrone := range gs.FrotaGlobal {
+		if estadoDrone.SeenAt == 0 {
+			continue
+		}
+		if estadoDrone.SeenAt < limite {
+			delete(gs.FrotaGlobal, idDrone)
+			fmt.Printf("🧹 [%s] Drone expirado removido da frota: %s\n", gs.MeuNamespace, idDrone)
+		}
 	}
 }

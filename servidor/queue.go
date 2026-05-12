@@ -22,20 +22,16 @@ func (aq *AlertQueue) EnqueueAlert(coordenada string, prioridade int) bool {
 	if prioridade == 2 {
 		// Fila crítica: verifica se não extrapolou tamanho máximo
 		if len(aq.critical) >= aq.maxSize {
-			fmt.Printf("⚠️ Fila crítica CHEIO! Descartando alerta mais antigo.\n")
-			if len(aq.critical) > 0 {
-				aq.critical = aq.critical[1:]
-			}
+			fmt.Printf("⚠️ Fila crítica CHEIA! Alerta crítico rejeitado para: %s\n", coordenada)
+			return false
 		}
 		aq.critical = append(aq.critical, alert)
 		fmt.Printf("📥 Alerta CRÍTICO enfileirado para: %s | Fila crítica: %d\n", coordenada, len(aq.critical))
 	} else {
 		// Fila normal: verifica se não extrapolou tamanho máximo
 		if len(aq.normal) >= aq.maxSize {
-			fmt.Printf("⚠️ Fila normal CHEIA! Descartando alerta mais antigo.\n")
-			if len(aq.normal) > 0 {
-				aq.normal = aq.normal[1:]
-			}
+			fmt.Printf("⚠️ Fila normal CHEIA! Alerta normal rejeitado para: %s\n", coordenada)
+			return false
 		}
 		aq.normal = append(aq.normal, alert)
 		fmt.Printf("📥 Alerta NORMAL enfileirado para: %s | Fila normal: %d\n", coordenada, len(aq.normal))
@@ -95,11 +91,35 @@ func (aq *AlertQueue) StartConsumer(gs *GlobalState) {
 	go func() {
 		fmt.Println("✅ Consumer da fila INICIADO e aguardando alertas...")
 		for {
-			// O Consumidor pega o alerta da fila
+			// A BARREIRA DE SEGURANÇA: Só passa se Ricart estiver livre E houver drones
+			for {
+				// 1. Verifica Ricart
+				gs.RicartMu.Lock()
+				isLivre := (gs.EstadoRicart == "LIVRE")
+				gs.RicartMu.Unlock()
+
+				// 2. Verifica Drones
+				gs.FrotaMu.RLock()
+				dronesLivres := 0
+				for _, drone := range gs.FrotaGlobal {
+					if drone.Status == "LIVRE" {
+						dronesLivres++
+					}
+				}
+				gs.FrotaMu.RUnlock()
+
+				// 3. O "Pulo do Gato": Só sai da espera se AMBAS as condições forem verdadeiras!
+				if isLivre && dronesLivres > 0 {
+					break
+				}
+
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			// AGORA SIM! Com certeza absoluta de que há recursos, tiramos o alerta da fila.
 			alert := aq.DequeueAlert()
 			fmt.Printf("🎯 Consumer processando alerta: prioridade=%d, coordenada=%s\n", alert.Prioridade, alert.Coordenada)
 
-			// E chama o Ricart. A própria função do Ricart já sabe esperar educadamente se estiver ocupada!
 			IniciarRequisicaoDrone(gs, alert.Prioridade, alert.Coordenada)
 		}
 	}()

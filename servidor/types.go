@@ -21,6 +21,7 @@ type Mensagem struct {
 type EstadoDrone struct {
 	Status string `json:"status"`
 	Setor  string `json:"setor"`
+	SeenAt int64  `json:"seen_at,omitempty"`
 }
 
 // Alert representa um alerta crítico ou normal na fila

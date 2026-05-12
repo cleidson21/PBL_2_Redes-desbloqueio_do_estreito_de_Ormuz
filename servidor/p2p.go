@@ -89,7 +89,12 @@ func ManipularMensagemP2P(gs *GlobalState, conn net.Conn) {
 		case "GOSSIP":
 			gs.FrotaMu.Lock()
 			for idDrone, estadoDrone := range msg.Frota {
-				gs.FrotaGlobal[idDrone] = estadoDrone
+				if estadoAtual, existe := gs.FrotaGlobal[idDrone]; !existe || estadoDrone.SeenAt >= estadoAtual.SeenAt {
+					if estadoDrone.SeenAt == 0 {
+						estadoDrone.SeenAt = time.Now().UnixNano()
+					}
+					gs.FrotaGlobal[idDrone] = estadoDrone
+				}
 			}
 			gs.FrotaMu.Unlock()
 
@@ -122,6 +127,15 @@ func ManipularMensagemP2P(gs *GlobalState, conn net.Conn) {
 		delete(gs.Vizinhos, vizinhoID)
 		gs.VizinhosMu.Unlock()
 		fmt.Printf("❌ [%s] Vizinho %s morreu e foi removido da lista.\n", gs.MeuNamespace, vizinhoID)
+
+		gs.FrotaMu.Lock()
+		for idDrone, estadoDrone := range gs.FrotaGlobal {
+			if estadoDrone.Setor == vizinhoID {
+				delete(gs.FrotaGlobal, idDrone)
+			}
+		}
+		gs.FrotaMu.Unlock()
+
 		VerificarConsenso(gs)
 	}
 	conn.Close()
