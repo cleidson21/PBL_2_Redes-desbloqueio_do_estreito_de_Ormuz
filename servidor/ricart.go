@@ -35,17 +35,14 @@ func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada s
 	gs.MeuTempoPedido = TickLamport(gs)
 	gs.RicartMu.Unlock()
 
-	fmt.Printf("⚖️ A iniciar Ricart-Agrawala -> Prioridade: %d | Relógio: %d | Destino: %s\n", prioridadeInicial, gs.MeuTempoPedido, coordenada)
-
+	// Inicio do protocolo Ricart-Agrawala (log reduzido em produção)
 	gs.VizinhosMu.RLock()
 	qtdVizinhos := len(gs.Vizinhos)
 	if qtdVizinhos == 0 {
 		gs.VizinhosMu.RUnlock()
-		fmt.Printf("⚠️ [RICART] Sem vizinhos conectados! Alcançando consenso local instantaneamente.\n")
 		VerificarConsenso(gs)
 		return
 	}
-	fmt.Printf("📡 [RICART] Enviando requisição para %d vizinhos...\n", qtdVizinhos)
 
 	msgReq := Mensagem{
 		Tipo:       "P2P_REQ",
@@ -89,11 +86,9 @@ func AvaliarPedidoVizinho(gs *GlobalState, msgReq Mensagem, connVizinho net.Conn
 
 	if devoAtrasar {
 		gs.FilaDeEspera = append(gs.FilaDeEspera, msgReq)
-		fmt.Printf("🛑 Vizinho %s colocado na fila de espera.\n", msgReq.Remetente)
 	} else {
 		if gs.EstadoRicart == "ESPERANDO" {
 			gs.ContadorAging++
-			fmt.Printf("😡 Perdi a vez para %s. Contador de Aging subiu para: %d\n", msgReq.Remetente, gs.ContadorAging)
 		}
 		ackMsg := Mensagem{
 			Tipo:      "ACK",
@@ -128,12 +123,9 @@ func VerificarConsenso(gs *GlobalState) {
 	vivos := len(gs.Vizinhos)
 	gs.VizinhosMu.RUnlock()
 
-	fmt.Printf("🔍 [RICART DEBUG] Estado: %s | ACKs: %d/%d | FilaEspera: %d\n", gs.EstadoRicart, gs.AcksRecebidos, vivos, len(gs.FilaDeEspera))
-
 	if gs.AcksRecebidos >= vivos {
 		gs.EstadoRicart = "USANDO"
 		gs.ContadorAging = 0
-		fmt.Printf("🏆 CONSENSO ALCANÇADO! Setor %s ganhou a Exclusão Mútua (ACKs: %d, Vizinhos: %d).\n", gs.MeuSetor, gs.AcksRecebidos, vivos)
 
 		// Executa despacho em goroutine separada
 		go ExecutarDespacho(gs, gs.AlvoAtual)
@@ -156,7 +148,7 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 			}
 		}
 	}
-	fmt.Printf("🎯 Procurando drone na rede: %d drones LIVRES encontrados\n", qtdDronesLivres)
+	// Procurou drones na rede
 	gs.FrotaMu.RUnlock()
 
 	if droneEscolhido == "" {
@@ -173,7 +165,6 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 		estado.Status = "EM_MISSAO"
 		estado.SeenAt = time.Now().UnixNano()
 		gs.FrotaGlobal[droneEscolhido] = estado
-		fmt.Printf("🚁 Drone %s marcado como EM_MISSAO\n", droneEscolhido)
 	}
 	gs.FrotaMu.Unlock()
 
@@ -261,7 +252,6 @@ func LiberarDrone(gs *GlobalState) {
 	defer gs.RicartMu.Unlock()
 
 	gs.EstadoRicart = "LIVRE"
-	fmt.Printf("🔓 A libertar a exclusão mútua. A enviar ACK para %d vizinhos na fila de espera...\n", len(gs.FilaDeEspera))
 
 	gs.VizinhosMu.RLock()
 	for _, reqAntiga := range gs.FilaDeEspera {

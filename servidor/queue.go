@@ -68,14 +68,12 @@ func (aq *AlertQueue) DequeueAlert() Alert {
 		alert := aq.critical[0]
 		aq.critical = aq.critical[1:]
 		aq.processedCount++
-		fmt.Printf("✅ Processando alerta CRÍTICO: %s\n", alert.Coordenada)
 		return alert
 	}
 
 	// Regra 3: Alertas Normais (Sobrou apenas este)
 	alert := aq.normal[0]
 	aq.normal = aq.normal[1:]
-	fmt.Printf("✅ Processando alerta NORMAL: %s\n", alert.Coordenada)
 	return alert
 }
 
@@ -89,7 +87,7 @@ func (aq *AlertQueue) QueueStats() (criticalCount, normalCount int) {
 // StartConsumer inicia a goroutine consumidora que processa alertas da fila
 func (aq *AlertQueue) StartConsumer(gs *GlobalState) {
 	go func() {
-		fmt.Println("✅ Consumer da fila INICIADO e aguardando alertas...")
+		// Consumer iniciado
 		for {
 			// A BARREIRA DE SEGURANÇA: Só passa se Ricart estiver livre E houver drones
 			for {
@@ -118,7 +116,6 @@ func (aq *AlertQueue) StartConsumer(gs *GlobalState) {
 
 			// AGORA SIM! Com certeza absoluta de que há recursos, tiramos o alerta da fila.
 			alert := aq.DequeueAlert()
-			fmt.Printf("🎯 Consumer processando alerta: prioridade=%d, coordenada=%s\n", alert.Prioridade, alert.Coordenada)
 
 			IniciarRequisicaoDrone(gs, alert.Prioridade, alert.Coordenada)
 		}

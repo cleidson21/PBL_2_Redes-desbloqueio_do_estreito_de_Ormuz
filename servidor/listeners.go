@@ -83,7 +83,6 @@ func ListenSensoresTLM(gs *GlobalState) {
 			continue
 		}
 		msg.Remetente = EnriquecerIdentidade(gs, msg.Remetente)
-		fmt.Printf("📡 TELEMETRIA recebida [%s]: %s km/h\n", msg.Remetente, msg.Valor)
 
 		// ===== HISTERESE CLIMÁTICA: Detecção de Vento Forte (PER-SENSOR) =====
 		valorAtualVento, errParse := strconv.ParseFloat(msg.Valor, 64)
@@ -157,7 +156,6 @@ func ListenRadarTCP(gs *GlobalState) {
 				SyncLamport(gs, msg.Relogio)
 
 				if msg.Tipo == "EVT" && msg.Acao == "ALERTA" {
-					fmt.Printf("🚨 ALERTA CRÍTICO DETETADO [%s]: %s em %s\n", msg.Remetente, msg.Valor, msg.Posicao)
 					AtualizarDashboards(gs, msg)
 					// Enfileirar como alerta crítico (prioridade 2)
 					if !gs.AlertQueue.EnqueueAlert(msg.Posicao, 2) {
