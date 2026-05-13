@@ -8,12 +8,12 @@ echo "🚀 Iniciando o Servidor de Setor..."
 # 🛠️ CONFIGURAÇÃO AUTOMÁTICA DE IDENTIDADE E MALHA P2P
 #
 # Padrão do laboratório:
-# - IPs de 172.16.201.1 até 172.16.201.16
+# - IPs de 172.16.201.1 até 172.16.103.16
 # - Cada máquina usa o último octeto do IP como identidade
 # - O próprio servidor é removido da lista de peers
 # ==============================================================================
 
-IP_PREFIX="${IP_PREFIX:-172.16.201}"
+IP_PREFIX="${IP_PREFIX:-172.16.103}"
 IP_INICIO="${IP_INICIO:-1}"
 IP_FIM="${IP_FIM:-16}"
 
