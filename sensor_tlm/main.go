@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// Mensagem representa o contrato JSON usado para telemetria e eventos.
 type Mensagem struct {
 	Tipo      string                 `json:"tipo"`
 	Remetente string                 `json:"remetente,omitempty"`
@@ -21,6 +22,7 @@ type Mensagem struct {
 	Frota     map[string]EstadoDrone `json:"frota,omitempty"`
 }
 
+// EstadoDrone descreve o estado agregado reportado para cada drone.
 type EstadoDrone struct {
 	Status string `json:"status"`
 	Setor  string `json:"setor"`
@@ -40,7 +42,6 @@ func main() {
 	var conn *net.UDPConn
 	addrAtual := ""
 
-	// Agora o ID reflete o cenário marítimo (ex: BOIA_NORTE_01, RADAR_VENTO)
 	sensorID := os.Getenv("SENSOR_ID")
 	if sensorID == "" {
 		sensorID = "BOIA_01"
@@ -77,23 +78,19 @@ func main() {
 	fmt.Printf("📡 Sensor de Telemetria [%s] iniciado! Enviando dados para %s via UDP a cada 2s.\n", sensorID, addrAtual)
 	fmt.Printf("   Threshold: valor > 70.0 durante 2 leituras consecutivas gera alerta CRÍTICO\n")
 
-	// Simula uma leitura oscilando dentro de um intervalo fixo.
-	// Pode representar Vento (km/h), Corrente (m/s), etc.
 	valorAtual := 20.0
-	variacao := 0.3 // Reduzido de 1.5 para 0.3 para evitar saturação
+	variacao := 0.3
 
-	// Rastreamento para threshold-based alert
 	valorAnterior := 0.0
 	contadorAlto := 0
 	const THRESHOLD = 70.0
 	const CONTADOR_LIMITE = 2
 
-	// Coordenadas simuladas do sensor (Estreito de Ormuz)
-	posicaoLat := 26.0 + rand.Float64()*2.0 // 26.0 a 28.0
-	posicaoLng := 56.0 + rand.Float64()*2.0 // 56.0 a 58.0
+	// A posição fica estática para modelar um sensor fixo na área monitorada.
+	posicaoLat := 26.0 + rand.Float64()*2.0
+	posicaoLng := 56.0 + rand.Float64()*2.0
 
 	for {
-		// Inverte o sentido quando atinge os limites para manter a oscilação.
 		valorAtual += variacao
 
 		if valorAtual >= 80.0 {
@@ -104,23 +101,20 @@ func main() {
 			variacao = 0.3
 		}
 
-		// Verifica condição de threshold para gerar alerta
 		if valorAtual > THRESHOLD {
 			contadorAlto++
 			if contadorAlto >= CONTADOR_LIMITE && valorAnterior <= THRESHOLD {
 				fmt.Printf("🚨 [THRESHOLD ALERT] Sensor %s detectou condição crítica: %.2f > %.2f (em %d leituras)\n", sensorID, valorAtual, THRESHOLD, contadorAlto)
-				// Aqui poderia gerar um alerta EVT/ALERTA, mas se preferir apenas TLM, continua assim
 			}
 		} else {
 			contadorAlto = 0
 		}
 
-		// Montagem do pacote JSON enxuto
 		mensagem := Mensagem{
 			Tipo:      "TLM",
 			Remetente: sensorID,
 			Valor:     fmt.Sprintf("%.2f", valorAtual),
-			Posicao:   fmt.Sprintf("%.4f,%.4f", posicaoLat, posicaoLng), // Coordenadas do sensor
+			Posicao:   fmt.Sprintf("%.4f,%.4f", posicaoLat, posicaoLng),
 		}
 
 		payload, errMarshal := json.Marshal(mensagem)
@@ -132,7 +126,6 @@ func main() {
 
 		fmt.Printf("📤 Enviando JSON -> %s\n", payload)
 
-		// UDP não confirma entrega; o sensor apenas envia e segue o ciclo.
 		if conn == nil {
 			idxServidor = (idxServidor + 1) % len(listaServidores)
 			addrAtual = strings.TrimSpace(listaServidores[idxServidor])
@@ -154,7 +147,6 @@ func main() {
 			}
 		}
 
-		// Intervalo fixo entre amostras: 2 segundos (aumentado de 500ms)
 		valorAnterior = valorAtual
 		time.Sleep(2 * time.Second)
 	}

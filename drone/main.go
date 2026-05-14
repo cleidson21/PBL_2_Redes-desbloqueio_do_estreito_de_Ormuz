@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// A NOVA STRUCT PADRÃO DO PBL 2
+// Mensagem representa o contrato JSON trocado com o servidor.
 type Mensagem struct {
 	Tipo      string                 `json:"tipo"`
 	Remetente string                 `json:"remetente,omitempty"`
@@ -24,6 +24,7 @@ type Mensagem struct {
 	Frota     map[string]EstadoDrone `json:"frota,omitempty"`
 }
 
+// EstadoDrone descreve o estado operacional reportado para cada drone.
 type EstadoDrone struct {
 	Status string `json:"status"`
 	Setor  string `json:"setor"`
@@ -44,7 +45,6 @@ func enviarMensagem(conn net.Conn, msg Mensagem) error {
 	return err
 }
 
-// Substitui a antiga 'extrairComando'. Agora lidamos direto com a struct!
 func lerMensagem(raw string) (Mensagem, error) {
 	var msg Mensagem
 	err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &msg)
@@ -91,11 +91,10 @@ func main() {
 
 		fmt.Printf("✅ [%s] Conectado com sucesso ao servidor em %s\n", droneID, addr)
 
-		// Regista o drone no Broker
 		if err := enviarMensagem(conn, Mensagem{
 			Tipo:      "REG",
 			Remetente: droneID,
-			Valor:     "DRONE", // Identifica que este agente TCP é um drone
+			Valor:     "DRONE",
 		}); err != nil {
 			fmt.Printf("⚠️ Falha ao registar o drone: %v\n", err)
 			conn.Close()
@@ -106,7 +105,6 @@ func main() {
 
 		done := make(chan bool)
 
-		// Goroutine do Heartbeat (Sinal de vida e Estado)
 		go func() {
 			for {
 				select {
@@ -119,8 +117,8 @@ func main() {
 					_ = enviarMensagem(conn, Mensagem{
 						Tipo:      "ACK",
 						Remetente: droneID,
-						Valor:     estadoEnvio, // LIVRE, EM_MISSAO...
-						Posicao:   localEnvio,  // BASE ou coordenadas
+						Valor:     estadoEnvio,
+						Posicao:   localEnvio,
 					})
 				case <-done:
 					log.Printf("Heartbeat parado para %s\n", droneID)
@@ -137,7 +135,6 @@ func main() {
 			}
 
 			msg, err := lerMensagem(raw)
-			// Só processa se for um JSON válido e do tipo Comando (CMD)
 			if err != nil || strings.ToUpper(msg.Tipo) != "CMD" {
 				continue
 			}
@@ -146,7 +143,6 @@ func main() {
 
 			switch acao {
 			case "DESPACHAR":
-				// O JSON já traz a coordenada limpa no campo Posicao!
 				destino := msg.Posicao
 				if destino == "" {
 					destino = "COORDENADAS DESCONHECIDAS"
@@ -164,7 +160,7 @@ func main() {
 
 				fmt.Printf("🚀 [%s] DESPACHADO para as coordenadas: %s\n", droneID, destino)
 
-				// Avisa o Broker imediatamente que o estado mudou
+				// O servidor precisa observar a troca de estado imediatamente para evitar dupla alocação.
 				_ = enviarMensagem(conn, Mensagem{
 					Tipo:      "ACK",
 					Remetente: droneID,
@@ -172,7 +168,7 @@ func main() {
 					Posicao:   destino,
 				})
 
-				// Inicia a simulação da missão numa Goroutine separada para não bloquear a leitura da rede
+				// A simulação ocorre em paralelo para manter o processamento de comandos responsivo.
 				go simularMissao(conn, droneID, destino)
 
 			case "RETORNAR":
@@ -206,9 +202,8 @@ func main() {
 	}
 }
 
-// Simula o tempo de voo e a resolução do incidente
 func simularMissao(conn net.Conn, droneID string, destino string) {
-	// Fica "EM_MISSAO" durante 20 segundos
+	// Mantém o drone em missão por uma janela fixa para representar a duração operacional do deslocamento.
 	time.Sleep(20 * time.Second)
 
 	mu.Lock()
@@ -218,7 +213,7 @@ func simularMissao(conn net.Conn, droneID string, destino string) {
 
 	fmt.Printf("✅ [%s] Missão em %s concluída! Retornou à base e está LIVRE.\n", droneID, destino)
 
-	// Avisa a rede que acabou o trabalho e está disponível para a próxima emergência
+	// O ACK final libera o drone para novas atribuições no servidor.
 	_ = enviarMensagem(conn, Mensagem{
 		Tipo:      "ACK",
 		Remetente: droneID,

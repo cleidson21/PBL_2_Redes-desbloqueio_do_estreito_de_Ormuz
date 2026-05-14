@@ -1,6 +1,6 @@
 package main
 
-// TickLamport incrementa e retorna o relógio lógico
+// TickLamport avança o relógio lógico local para representar um novo evento.
 func TickLamport(gs *GlobalState) int {
 	gs.RelogioMu.Lock()
 	defer gs.RelogioMu.Unlock()
@@ -8,7 +8,7 @@ func TickLamport(gs *GlobalState) int {
 	return gs.Relogio
 }
 
-// SyncLamport sincroniza o relógio com um valor recebido
+// SyncLamport ajusta o relógio local para preservar a ordem causal antes de avançá-lo.
 func SyncLamport(gs *GlobalState, relogioRecebido int) {
 	gs.RelogioMu.Lock()
 	defer gs.RelogioMu.Unlock()

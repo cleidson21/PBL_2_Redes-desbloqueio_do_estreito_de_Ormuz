@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// ListenP2P abre porta para mensagens P2P entre vizinhos
+// ListenP2P aceita mensagens entre vizinhos e mantém a malha local sincronizada.
 func ListenP2P(gs *GlobalState) {
 	listener, err := net.Listen("tcp", ":8084")
 	if err != nil {
@@ -22,19 +22,17 @@ func ListenP2P(gs *GlobalState) {
 		if err != nil {
 			continue
 		}
-		// 🔴 CORREÇÃO: Habilita KeepAlive para evitar que Docker bridge mate conexões silenciosas
 		HabilitarKeepAlive(conn)
 		go ManipularMensagemP2P(gs, conn)
 	}
 }
 
-// ConectarAosVizinhos conecta aos peers configurados
+// ConectarAosVizinhos inicia tentativas de conexão persistentes com todos os vizinhos configurados.
 func ConectarAosVizinhos(gs *GlobalState, peers string) {
 	if peers == "" {
 		return
 	}
 
-	// Parse peers (formato: "ip1:porta1,ip2:porta2,...")
 	peerList := parseAddressList(peers)
 	for _, peerAddr := range peerList {
 		go reconectarAVizinho(gs, peerAddr)
@@ -49,7 +47,6 @@ func reconectarAVizinho(gs *GlobalState, addr string) {
 			continue
 		}
 
-		// 🔴 CORREÇÃO: Habilita KeepAlive para evitar que Docker bridge mate conexões silenciosas
 		HabilitarKeepAlive(conn)
 
 		msgHello := Mensagem{
@@ -65,7 +62,7 @@ func reconectarAVizinho(gs *GlobalState, addr string) {
 	}
 }
 
-// ManipularMensagemP2P processa mensagens P2P
+// ManipularMensagemP2P processa sincronização P2P, gossip e encaminhamento entre setores.
 func ManipularMensagemP2P(gs *GlobalState, conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	var vizinhoID string
@@ -141,7 +138,7 @@ func ManipularMensagemP2P(gs *GlobalState, conn net.Conn) {
 	conn.Close()
 }
 
-// RotinaGossip propaga estado da frota periodicamente
+// RotinaGossip replica periodicamente o estado da frota para vizinhos e dashboards.
 func RotinaGossip(gs *GlobalState) {
 	for {
 		time.Sleep(5 * time.Second)

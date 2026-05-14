@@ -7,7 +7,6 @@ import (
 )
 
 func main() {
-	// Lê variáveis de ambiente
 	meuSetor := os.Getenv("MEU_SETOR")
 	if meuSetor == "" {
 		meuSetor = "DESCONHECIDO"
@@ -15,7 +14,6 @@ func main() {
 
 	peersEnv := os.Getenv("PEERS")
 
-	// Cria estado global com buffer de 100 alertas e threshold de starvation prevention = 3
 	gs := NewGlobalState(meuSetor, 100, 3)
 
 	fmt.Printf("🚀 Servidor de Setor Iniciado: [%s]\n", gs.MeuNamespace)
@@ -23,7 +21,6 @@ func main() {
 	fmt.Printf("📥 Buffer de fila: 100 alertas | Starvation threshold: 3 ciclos críticos\n")
 	fmt.Println("==================================================")
 
-	// Inicia listeners para diferentes portas
 	go ListenP2P(gs)
 	go ListenSensoresTLM(gs)
 	go ListenRadarTCP(gs)
@@ -32,16 +29,12 @@ func main() {
 
 	time.Sleep(3 * time.Second)
 
-	// Inicia conexões aos vizinhos P2P
 	go ConectarAosVizinhos(gs, peersEnv)
 
-	// Inicia rotina de gossip
 	go RotinaGossip(gs)
 
-	// Inicia consumer da fila de alertas
 	gs.AlertQueue.StartConsumer(gs)
 
-	// Log periódico do estado da fila (para debug)
 	go func() {
 		for {
 			time.Sleep(10 * time.Second)
@@ -69,6 +62,5 @@ func main() {
 		}
 	}()
 
-	// Bloqueia indefinidamente
 	select {}
 }

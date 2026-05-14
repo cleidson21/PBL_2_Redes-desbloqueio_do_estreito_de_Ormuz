@@ -2,7 +2,6 @@
 
 set -e
 
-# Endereco do servidor na rede de testes.
 IP_GATEWAY1="${IP_GATEWAY1:-172.16.103.7}"
 IP_GATEWAY2="${IP_GATEWAY2:-172.16.103.8}"
 IP_GATEWAY3="${IP_GATEWAY3:-172.16.103.9}"
@@ -19,35 +18,28 @@ docker pull "$IMG_SENSOR_TLM" >/dev/null
 docker pull "$IMG_RADAR_TCP" >/dev/null
 
 for i in $(seq 1 $QTD_SALAS); do
-    # 1. Converte o número do loop para Hexadecimal
     HEX_I=$(printf '%02X' $i)
-    
-    # 2. Gera o MAC Address Base para os sensores deste setor
     MAC_ADDR=$(printf '02:%02X:%02X:%02X:%02X:%s' $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) "$HEX_I")
 
     echo "  -> Subindo Sensores do setor $i com sufixo MAC: $MAC_ADDR"
 
-    # Sensor UDP de telemetria TLM.
     docker run -d --name "stress_sensor_tlm_$i" \
         -e SERVER_ADDRS="$IP_GATEWAY1:8080,$IP_GATEWAY2:8080,$IP_GATEWAY3:8080,$IP_GATEWAY4:8080" \
         -e SENSOR_ID="BOIA_${MAC_ADDR}" \
         "$IMG_SENSOR_TLM" > /dev/null
 
-    # Sensor TCP de RADAR.
     docker run -d --name "stress_radar_tcp_$i" \
         -e SERVER_ADDRS="$IP_GATEWAY1:8081,$IP_GATEWAY2:8081,$IP_GATEWAY3:8081,$IP_GATEWAY4:8081" \
         -e SENSOR_ID="RADAR_${MAC_ADDR}" \
         -e SENSOR_TIPO="RADAR" \
         "$IMG_RADAR_TCP" > /dev/null
 
-    # Sensor TCP de AIS (Sistema de Identificação Automática).
     docker run -d --name "stress_ais_tcp_$i" \
         -e SERVER_ADDRS="$IP_GATEWAY1:8081,$IP_GATEWAY2:8081,$IP_GATEWAY3:8081,$IP_GATEWAY4:8081" \
         -e SENSOR_ID="AIS_${MAC_ADDR}" \
         -e SENSOR_TIPO="AIS" \
         "$IMG_RADAR_TCP" > /dev/null
 
-    # Sensor TCP Químico.
     docker run -d --name "stress_quimico_tcp_$i" \
         -e SERVER_ADDRS="$IP_GATEWAY1:8081,$IP_GATEWAY2:8081,$IP_GATEWAY3:8081,$IP_GATEWAY4:8081" \
         -e SENSOR_ID="QUIMICO_${MAC_ADDR}" \

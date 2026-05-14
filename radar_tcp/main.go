@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// A NOVA STRUCT PADRÃO DO PBL 2
+// Mensagem representa o contrato JSON trocado com o servidor.
 type Mensagem struct {
 	Tipo      string                 `json:"tipo"`
 	Remetente string                 `json:"remetente,omitempty"`
@@ -22,6 +22,7 @@ type Mensagem struct {
 	Frota     map[string]EstadoDrone `json:"frota,omitempty"`
 }
 
+// EstadoDrone descreve o estado agregado reportado para cada drone.
 type EstadoDrone struct {
 	Status string `json:"status"`
 	Setor  string `json:"setor"`
@@ -58,7 +59,7 @@ func main() {
 		sensorTipo = "RADAR"
 	}
 
-	// LÓGICA CAMALEÃO: Define os alertas possíveis com base no tipo do sensor
+	// A seleção dinâmica de eventos permite reutilizar o mesmo sensor para perfis operacionais distintos.
 	var eventosPossiveis []string
 	switch sensorTipo {
 	case "RADAR":
@@ -86,15 +87,12 @@ func main() {
 		fmt.Printf("✅ Sensor Crítico [%s] (Tipo: %s) conectado ao servidor em %s.\n", sensorID, sensorTipo, addr)
 
 		for {
-			// Sorteia um evento crítico da lista do "Camaleão"
 			eventoSorteado := eventosPossiveis[rand.Intn(len(eventosPossiveis))]
 
-			// Simula uma coordenada GPS próxima ao Estreito de Ormuz (Lat ~26.0, Lon ~56.0)
 			lat := 26.0 + (rand.Float64() * 1.5)
 			lon := 56.0 + (rand.Float64() * 1.5)
 			coordenadaSimulada := fmt.Sprintf("%.4f,%.4f", lat, lon)
 
-			// Montagem do pacote JSON enxuto
 			mensagem := Mensagem{
 				Tipo:      "EVT",
 				Remetente: sensorID,
@@ -113,14 +111,12 @@ func main() {
 
 			fmt.Printf("A disparar ALERTA JSON -> %s\n", payload)
 
-			// TCP reutiliza a ligação aberta; se falhar, interrompe o for interno para reconectar.
 			if _, err := fmt.Fprintf(conn, "%s\n", payload); err != nil {
 				fmt.Printf("⚠️ Falha ao enviar o alerta crítico: %v\n", err)
 				break
 			}
 
-			// Intervalo aleatório ALTO entre leituras (Emergências não acontecem a toda a hora)
-			// Simula uma emergência a cada 15 a 45 segundos
+			// O intervalo aleatório reduz sincronização artificial entre sensores e imita tráfego intermitente.
 			tempoEspera := time.Duration(rand.Intn(30)+15) * time.Second
 			time.Sleep(tempoEspera)
 		}

@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-// parseAddressList converte "addr1,addr2,..." em lista de endereços
+// parseAddressList converte uma lista separada por vírgulas em endereços normalizados.
 func parseAddressList(addressStr string) []string {
 	var result []string
 	parts := strings.Split(addressStr, ",")

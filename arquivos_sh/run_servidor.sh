@@ -4,15 +4,6 @@ set -e
 
 echo "🚀 Iniciando o Servidor de Setor..."
 
-# ==============================================================================
-# 🛠️ CONFIGURAÇÃO AUTOMÁTICA DE IDENTIDADE E MALHA P2P
-#
-# Padrão do laboratório:
-# - IPs de 172.16.201.1 até 172.16.103.16
-# - Cada máquina usa o último octeto do IP como identidade
-# - O próprio servidor é removido da lista de peers
-# ==============================================================================
-
 IP_PREFIX="${IP_PREFIX:-172.16.103}"
 IP_INICIO="${IP_INICIO:-1}"
 IP_FIM="${IP_FIM:-16}"
@@ -53,15 +44,11 @@ done
 
 PEERS="${PEERS:-$(IFS=,; echo "${PEERS_LIST[*]}")}"
 
-# ==============================================================================
-
 IMAGE_SERVIDOR="${IMAGE_SERVIDOR:-cleidsonramos/servidor:latest}"
 USE_LOCAL_BUILD="${USE_LOCAL_BUILD:-false}"
 
-# Remove a instancia antiga para evitar conflito de nome ao subir o servidor.
 docker rm -f servidor_ormuz 2>/dev/null || true
 
-# Define a imagem a usar
 if [[ "$USE_LOCAL_BUILD" == "true" ]]; then
     IMAGE_SERVIDOR="pbl-servidor:local"
     docker build -t "$IMAGE_SERVIDOR" ./servidor >/dev/null
@@ -69,7 +56,6 @@ else
     docker pull "$IMAGE_SERVIDOR" >/dev/null
 fi
 
-# Sobe o servidor com as portas UDP e TCP E COM A VARIÁVEL PEERS
 docker run -d --name servidor_ormuz \
     -p 8080:8080/udp \
     -p 8081:8081/tcp \

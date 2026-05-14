@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// Mensagem é a estrutura padrão de comunicação
+// Mensagem representa o envelope JSON usado entre sensores, drones, dashboards e vizinhos.
 type Mensagem struct {
 	Tipo       string                 `json:"tipo"`
 	Remetente  string                 `json:"remetente,omitempty"`
@@ -18,43 +18,41 @@ type Mensagem struct {
 	Frota      map[string]EstadoDrone `json:"frota,omitempty"`
 }
 
+// EstadoDrone descreve o estado atual conhecido de um drone na frota global.
 type EstadoDrone struct {
 	Status string `json:"status"`
 	Setor  string `json:"setor"`
 	SeenAt int64  `json:"seen_at,omitempty"`
 }
 
-// Alert representa um alerta crítico ou normal na fila
+// Alert representa um item de trabalho da fila com prioridade e controle de starvation.
 type Alert struct {
 	Coordenada    string
-	Prioridade    int // 1=normal, 2=crítico
+	Prioridade    int
 	Timestamp     int64
 	ID            string
-	StarveCounter int // conta quantos ciclos críticos passaram sem atender este alert
+	StarveCounter int
 }
 
-// AlertQueue gerencia fila de alta e baixa prioridade com starvation prevention
+// AlertQueue gerencia filas separadas de prioridade com prevenção de starvation.
 type AlertQueue struct {
-	critical        []Alert // fila de alertas críticos (prioridade 2)
-	normal          []Alert // fila de alertas normais (prioridade 1)
+	critical        []Alert
+	normal          []Alert
 	mu              sync.Mutex
 	notEmpty        *sync.Cond
 	maxSize         int
-	starveThreshold int // após N ciclos críticos, normal sobe para crítico
-	processedCount  int // conta quantos alertas críticos foram processados
+	starveThreshold int
+	processedCount  int
 }
 
-// GlobalState contém todas as variáveis globais compartilhadas
+// GlobalState reúne o estado compartilhado do servidor e a infraestrutura de concorrência associada.
 type GlobalState struct {
-	// Identidade do setor
 	MeuSetor     string
 	MeuNamespace string
 
-	// Lamport clock
 	RelogioMu sync.Mutex
 	Relogio   int
 
-	// Conexões
 	RadaresMu    sync.RWMutex
 	Radares      map[string]net.Conn
 	SensoresMu   sync.RWMutex
@@ -64,17 +62,14 @@ type GlobalState struct {
 	DashboardsMu sync.RWMutex
 	Dashboards   map[net.Conn]bool
 
-	// P2P
 	VizinhosMu sync.RWMutex
 	Vizinhos   map[string]net.Conn
 
-	// Frota global
 	FrotaMu     sync.RWMutex
 	FrotaGlobal map[string]EstadoDrone
 
-	// Ricart-Agrawala
 	RicartMu        sync.Mutex
-	EstadoRicart    string // LIVRE, ESPERANDO, USANDO
+	EstadoRicart    string
 	MeuTempoPedido  int
 	MinhaPrioridade int
 	ContadorAging   int
@@ -82,11 +77,10 @@ type GlobalState struct {
 	FilaDeEspera    []Mensagem
 	AlvoAtual       string
 
-	// Fila de alertas
 	AlertQueue *AlertQueue
 }
 
-// NewGlobalState cria uma nova instância do estado global
+// NewGlobalState cria o estado global inicializado com as estruturas de fila e mapas vazios.
 func NewGlobalState(meuSetor string, maxQueueSize, starveThreshold int) *GlobalState {
 	gs := &GlobalState{
 		MeuSetor:      meuSetor,
@@ -103,7 +97,6 @@ func NewGlobalState(meuSetor string, maxQueueSize, starveThreshold int) *GlobalS
 		AcksRecebidos: 0,
 	}
 
-	// Initialize alert queue
 	aq := &AlertQueue{
 		critical:        make([]Alert, 0, maxQueueSize),
 		normal:          make([]Alert, 0, maxQueueSize),
