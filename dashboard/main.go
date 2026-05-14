@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// STRUCTS DE DADOS
+// Mensagem representa o contrato JSON trocado com o broker.
 type Mensagem struct {
 	Tipo      string                 `json:"tipo"`
 	Remetente string                 `json:"remetente,omitempty"`
@@ -23,13 +23,13 @@ type Mensagem struct {
 	Frota     map[string]EstadoDrone `json:"frota,omitempty"`
 }
 
+// EstadoDrone descreve o snapshot mais recente de um drone na frota.
 type EstadoDrone struct {
 	Status string `json:"status"`
 	Setor  string `json:"setor"`
 }
 
 var (
-	// ESTADO DO DASHBOARD
 	mu          sync.RWMutex
 	frota       = make(map[string]EstadoDrone)
 	alertas     = make([]string, 0)
@@ -38,9 +38,8 @@ var (
 	connMu     sync.RWMutex
 	brokerConn net.Conn
 
-	// CONTROLE DE INTERFACE TUI
 	uiMu        sync.RWMutex
-	modoComando bool // Se true, pausa a atualização automática para o usuário digitar
+	modoComando bool
 )
 
 func setConexao(conn net.Conn) {
@@ -100,7 +99,7 @@ func manterConexaoComBroker(addrVars string) {
 		addr := strings.TrimSpace(listaServidores[idxServidor])
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
-			// Silenciado no modo automático para não poluir a TUI
+			// Rotaciona entre brokers para evitar dependência de um único ponto de falha.
 			idxServidor = (idxServidor + 1) % len(listaServidores)
 			time.Sleep(3 * time.Second)
 			continue
@@ -127,27 +126,21 @@ func manterConexaoComBroker(addrVars string) {
 	}
 }
 
-// INTERFACE COM O UTILIZADOR (TUI - Terminal User Interface)
 func main() {
 	addrVars := os.Getenv("SERVER_ADDRS")
 	if addrVars == "" {
 		addrVars = "localhost:8083"
 	}
 
-	// 1. Inicia a rede em background
 	go manterConexaoComBroker(addrVars)
 
-	// 2. Inicia o renderizador automático de tela
 	go renderizadorAutomatico()
 
-	// 3. Thread principal bloqueada esperando ações do teclado
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		// Fica aguardando o usuário apertar ENTER para entrar no modo comando
 		reader.ReadString('\n')
 
-		// Pausa a atualização automática
 		uiMu.Lock()
 		modoComando = true
 		uiMu.Unlock()
@@ -167,7 +160,6 @@ func main() {
 
 		switch opcao {
 		case "1":
-			// Apenas volta para o loop automático
 		case "2":
 			fmt.Print("\n📍 Digite as coordenadas para a missão (ex: 26.54,56.12): ")
 			coordenada, _ := reader.ReadString('\n')
@@ -196,14 +188,12 @@ func main() {
 			return
 		}
 
-		// Libera a tela para voltar a atualizar automaticamente
 		uiMu.Lock()
 		modoComando = false
 		uiMu.Unlock()
 	}
 }
 
-// renderizadorAutomatico atualiza a tela a cada segundo se não estiver em modo comando
 func renderizadorAutomatico() {
 	for {
 		uiMu.RLock()
@@ -211,6 +201,7 @@ func renderizadorAutomatico() {
 		uiMu.RUnlock()
 
 		if !isComando {
+			// Evita sobrescrever a entrada interativa enquanto o operador está digitando.
 			limparTela()
 			imprimirPainel()
 		}
@@ -218,12 +209,12 @@ func renderizadorAutomatico() {
 	}
 }
 
-// limparTela usa códigos ANSI para limpar o terminal e voltar o cursor pro topo
 func limparTela() {
 	fmt.Print("\033[H\033[2J")
 }
 
 func ouvirRede(conn net.Conn) {
+	// O protocolo chega como uma linha JSON por mensagem; entradas inválidas são descartadas sem interromper o fluxo.
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		mensagemRaw := strings.TrimSpace(scanner.Text())
@@ -267,7 +258,6 @@ func imprimirPainel() {
 	mu.RLock()
 	defer mu.RUnlock()
 
-	// Verifica status da conexão
 	statusRede := "🟢 ONLINE"
 	if getConexao() == nil {
 		statusRede = "🔴 OFFLINE (Procurando servidor...)"

@@ -7,22 +7,17 @@ import (
 	"time"
 )
 
-// IniciarRequisicaoDrone inicia o protocolo Ricart-Agrawala para obter acesso exclusivo
+// IniciarRequisicaoDrone inicia a negociação de exclusão mútua antes de despachar um drone.
 func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada string) {
-	// 🔴 CORREÇÃO: Aguardar SINCRONAMENTE até Ricart estar LIVRE
-	// Isso evita que alertas sejam descartados quando Ricart está ocupado
+	// A requisição só pode prosseguir quando a seção crítica local estiver realmente livre.
 	for {
 		gs.RicartMu.Lock()
 		if gs.EstadoRicart == "LIVRE" {
-			break // Saiu do mutex com LOCK ainda ativo! Vai usar abaixo
+			break
 		}
 		gs.RicartMu.Unlock()
-		time.Sleep(50 * time.Millisecond) // Espera ocupada curta
+		time.Sleep(50 * time.Millisecond)
 	}
-
-	// Neste ponto, RicartMu está LOCKED e EstadoRicart == "LIVRE"
-
-	// Aplicar aging: se perdeu muitas vezes, elevar prioridade
 	if gs.ContadorAging >= 3 {
 		fmt.Printf("🔥 [AGING] Setor %s cansou de perder a vez! Prioridade elevada de %d para 2 (CRÍTICA)\n", gs.MeuSetor, prioridadeInicial)
 		prioridadeInicial = 2
@@ -35,7 +30,6 @@ func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada s
 	gs.MeuTempoPedido = TickLamport(gs)
 	gs.RicartMu.Unlock()
 
-	// Inicio do protocolo Ricart-Agrawala (log reduzido em produção)
 	gs.VizinhosMu.RLock()
 	qtdVizinhos := len(gs.Vizinhos)
 	if qtdVizinhos == 0 {
@@ -57,11 +51,11 @@ func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada s
 	}
 	gs.VizinhosMu.RUnlock()
 
-	// Inicia monitor de timeout para evitar deadlock permanente
+	// O timeout protege a malha contra espera infinita quando algum ACK não retorna.
 	go MonitorConsensoComTimeout(gs, 15*time.Second)
 }
 
-// AvaliarPedidoVizinho avalia se deve colocar vizinho na fila ou enviar ACK
+// AvaliarPedidoVizinho decide entre adiar a resposta ou liberar o vizinho com ACK.
 func AvaliarPedidoVizinho(gs *GlobalState, msgReq Mensagem, connVizinho net.Conn) {
 	gs.RicartMu.Lock()
 	defer gs.RicartMu.Unlock()
@@ -100,7 +94,7 @@ func AvaliarPedidoVizinho(gs *GlobalState, msgReq Mensagem, connVizinho net.Conn
 	}
 }
 
-// ReceberAckP2P incrementa contador de ACKs recebidos
+// ReceberAckP2P contabiliza ACKs recebidos e reavalia se o consenso já foi atingido.
 func ReceberAckP2P(gs *GlobalState) {
 	gs.RicartMu.Lock()
 	if gs.EstadoRicart == "ESPERANDO" {
@@ -110,7 +104,7 @@ func ReceberAckP2P(gs *GlobalState) {
 	VerificarConsenso(gs)
 }
 
-// VerificarConsenso verifica se todos os ACKs foram recebidos
+// VerificarConsenso confirma a posse da seção crítica quando todos os vizinhos já responderam.
 func VerificarConsenso(gs *GlobalState) {
 	gs.RicartMu.Lock()
 	defer gs.RicartMu.Unlock()
@@ -127,12 +121,12 @@ func VerificarConsenso(gs *GlobalState) {
 		gs.EstadoRicart = "USANDO"
 		gs.ContadorAging = 0
 
-		// Executa despacho em goroutine separada
+		// O despacho roda fora do lock para não bloquear novas mensagens de controle.
 		go ExecutarDespacho(gs, gs.AlvoAtual)
 	}
 }
 
-// ExecutarDespacho tenta escolher um drone livre e despacha
+// ExecutarDespacho escolhe um drone livre e encaminha o comando para o setor correto.
 func ExecutarDespacho(gs *GlobalState, coordenada string) {
 	var droneEscolhido string
 	var setorDoDrone string
@@ -148,7 +142,6 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 			}
 		}
 	}
-	// Procurou drones na rede
 	gs.FrotaMu.RUnlock()
 
 	if droneEscolhido == "" {
@@ -159,7 +152,6 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 
 	fmt.Printf("🎯 Decisão P2P: O Drone escolhido foi o [%s] (pertence ao setor %s)\n", droneEscolhido, setorDoDrone)
 
-	// Atualiza estado para EM_MISSAO
 	gs.FrotaMu.Lock()
 	if estado, ok := gs.FrotaGlobal[droneEscolhido]; ok {
 		estado.Status = "EM_MISSAO"
@@ -169,7 +161,6 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 	gs.FrotaMu.Unlock()
 
 	if setorDoDrone == gs.MeuSetor {
-		// Drone local
 		gs.DronesMu.RLock()
 		connDrone, ok := gs.DronesLocais[droneEscolhido]
 		gs.DronesMu.RUnlock()
@@ -205,7 +196,6 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 			gs.FrotaMu.Unlock()
 		}
 	} else {
-		// Drone remoto
 		gs.VizinhosMu.RLock()
 		connVizinho, ok := gs.Vizinhos[setorDoDrone]
 		gs.VizinhosMu.RUnlock()
@@ -246,7 +236,7 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 	LiberarDrone(gs)
 }
 
-// LiberarDrone libera a seção crítica e envia ACKs para a fila de espera
+// LiberarDrone encerra a seção crítica e libera os vizinhos que ficaram em espera.
 func LiberarDrone(gs *GlobalState) {
 	gs.RicartMu.Lock()
 	defer gs.RicartMu.Unlock()
@@ -270,8 +260,7 @@ func LiberarDrone(gs *GlobalState) {
 	gs.FilaDeEspera = nil
 }
 
-// MonitorConsensoComTimeout monitora se o consenso foi alcançado dentro do timeout
-// Se timeout expirar e ainda está ESPERANDO, reseta para LIVRE para permitir retry
+// MonitorConsensoComTimeout evita bloqueio permanente quando o consenso não se completa a tempo.
 func MonitorConsensoComTimeout(gs *GlobalState, timeout time.Duration) {
 	time.Sleep(timeout)
 

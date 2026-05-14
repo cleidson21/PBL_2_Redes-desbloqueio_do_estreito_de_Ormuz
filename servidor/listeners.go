@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// HabilitarKeepAlive ativa TCP keep-alive
+// HabilitarKeepAlive ativa TCP keep-alive para reduzir quedas silenciosas de conexão.
 func HabilitarKeepAlive(conn net.Conn) {
 	tcpConn, ok := conn.(*net.TCPConn)
 	if !ok {
@@ -20,7 +20,7 @@ func HabilitarKeepAlive(conn net.Conn) {
 	_ = tcpConn.SetKeepAlivePeriod(3 * time.Second)
 }
 
-// EnriquecerIdentidade adiciona namespace ao ID de um dispositivo
+// EnriquecerIdentidade normaliza IDs externos com o namespace local para evitar colisões entre módulos.
 func EnriquecerIdentidade(gs *GlobalState, id string) string {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -32,7 +32,7 @@ func EnriquecerIdentidade(gs *GlobalState, id string) string {
 	return id
 }
 
-// AtualizarDashboards notifica todos os dashboards conectados
+// AtualizarDashboards replica um evento para todos os dashboards conectados sem bloquear a produção principal.
 func AtualizarDashboards(gs *GlobalState, msg Mensagem) {
 	payload, err := json.Marshal(msg)
 	if err != nil {
@@ -53,7 +53,7 @@ func registrarEstadoDrone(gs *GlobalState, droneID string, estado EstadoDrone) {
 	gs.FrotaGlobal[droneID] = estado
 }
 
-// ListenSensoresTLM escuta telemetria via UDP
+// ListenSensoresTLM consome telemetria UDP, aplica histerese por sensor e enfileira alertas de clima.
 func ListenSensoresTLM(gs *GlobalState) {
 	addr, _ := net.ResolveUDPAddr("udp", ":8080")
 	conn, err := net.ListenUDP("udp", addr)
@@ -63,14 +63,13 @@ func ListenSensoresTLM(gs *GlobalState) {
 	}
 	defer conn.Close()
 
-	// Mapa para rastrear estado da histerese por posição/sensor (não global!)
 	type HisteriseEstado struct {
 		estadoVentoAlto bool
 		ultimoAlertaID  string
 	}
 	estadosHisterese := make(map[string]HisteriseEstado)
-	limiteSuperior := 70.0 // km/h - Dispara alerta
-	limiteInferior := 50.0 // km/h - Desativa alerta
+	limiteSuperior := 70.0
+	limiteInferior := 50.0
 
 	buffer := make([]byte, 1024)
 	for {
@@ -84,33 +83,29 @@ func ListenSensoresTLM(gs *GlobalState) {
 		}
 		msg.Remetente = EnriquecerIdentidade(gs, msg.Remetente)
 
-		// ===== HISTERESE CLIMÁTICA: Detecção de Vento Forte (PER-SENSOR) =====
 		valorAtualVento, errParse := strconv.ParseFloat(msg.Valor, 64)
 		if errParse == nil {
-			// Recupera estado anterior deste sensor
 			estado, existe := estadosHisterese[msg.Remetente]
 			if !existe {
 				estado = HisteriseEstado{estadoVentoAlto: false, ultimoAlertaID: ""}
 			}
 
-			// TRANSIÇÃO: Vento fraco → Vento forte
 			if !estado.estadoVentoAlto && valorAtualVento > limiteSuperior {
 				estado.estadoVentoAlto = true
 				estado.ultimoAlertaID = fmt.Sprintf("%d", time.Now().UnixNano())
 				estadosHisterese[msg.Remetente] = estado
 
-				// Se não tem posição, usa coordenada padrão
 				posicao := msg.Posicao
 				if posicao == "" {
-					posicao = "26.5,56.5" // Centro do Estreito de Ormuz
+					posicao = "26.5,56.5"
 				}
+				// A histerese evita alertas repetidos enquanto o vento permanece acima do limiar.
 				fmt.Printf("  🌪️  [ALERTA CLIMÁTICO] Vento forte detetado (%.2f km/h) em %s (sensor: %s). Acionando patrulha drone!\n", valorAtualVento, posicao, msg.Remetente)
 				if !gs.AlertQueue.EnqueueAlert(posicao, 1) {
 					fmt.Printf("⚠️ [ALERTA CLIMÁTICO] Falha ao enfileirar alerta para %s\n", posicao)
 				}
 
 			} else if estado.estadoVentoAlto && valorAtualVento < limiteInferior {
-				// TRANSIÇÃO: Vento forte → Vento fraco
 				estado.estadoVentoAlto = false
 				estadosHisterese[msg.Remetente] = estado
 
@@ -121,13 +116,12 @@ func ListenSensoresTLM(gs *GlobalState) {
 				fmt.Printf("  ✅ [CLIMA NORMALIZADO] O vento acalmou em %s (%.2f km/h, sensor: %s).\n", posicao, valorAtualVento, msg.Remetente)
 			}
 		}
-		// ===== FIM DA HISTERESE CLIMÁTICA =====
 
 		AtualizarDashboards(gs, msg)
 	}
 }
 
-// ListenRadarTCP escuta eventos críticos via TCP
+// ListenRadarTCP consome eventos críticos TCP, sincroniza Lamport e distribui alertas para o restante do sistema.
 func ListenRadarTCP(gs *GlobalState) {
 	listener, err := net.Listen("tcp", ":8081")
 	if err != nil {
@@ -157,7 +151,6 @@ func ListenRadarTCP(gs *GlobalState) {
 
 				if msg.Tipo == "EVT" && msg.Acao == "ALERTA" {
 					AtualizarDashboards(gs, msg)
-					// Enfileirar como alerta crítico (prioridade 2)
 					if !gs.AlertQueue.EnqueueAlert(msg.Posicao, 2) {
 						fmt.Printf("⚠️ [%s] Alerta crítico rejeitado por fila cheia: %s\n", msg.Remetente, msg.Posicao)
 					}
@@ -167,7 +160,7 @@ func ListenRadarTCP(gs *GlobalState) {
 	}
 }
 
-// ListenDrones escuta drones via TCP
+// ListenDrones mantém o estado da frota sincronizado com registros e ACKs dos drones.
 func ListenDrones(gs *GlobalState) {
 	listener, err := net.Listen("tcp", ":8082")
 	if err != nil {
@@ -204,14 +197,12 @@ func ListenDrones(gs *GlobalState) {
 					gs.DronesMu.Unlock()
 
 					gs.FrotaMu.Lock()
-					// Se drone já existia como DESCONECTADO, restaura para LIVRE
 					if estado, existe := gs.FrotaGlobal[droneID]; existe && estado.Status == "DESCONECTADO" {
 						fmt.Printf("♻️ [%s] Drone RECONECTADO! Restaurando status para LIVRE.\n", droneID)
 						estado.Status = "LIVRE"
 						estado.SeenAt = time.Now().UnixNano()
 						registrarEstadoDrone(gs, droneID, estado)
 					} else if !existe {
-						// Novo drone
 						registrarEstadoDrone(gs, droneID, EstadoDrone{Status: "LIVRE", Setor: gs.MeuSetor, SeenAt: time.Now().UnixNano()})
 					}
 					gs.FrotaMu.Unlock()
@@ -231,7 +222,6 @@ func ListenDrones(gs *GlobalState) {
 						gs.FrotaMu.Unlock()
 						AtualizarDashboards(gs, msg)
 					} else {
-						// ✅ AGORA SEMPRE libertar a memória, mesmo se o drone não existir!
 						gs.FrotaMu.Unlock()
 					}
 				}
@@ -256,7 +246,7 @@ func ListenDrones(gs *GlobalState) {
 	}
 }
 
-// ListenDashboardTCP escuta dashboards via TCP
+// ListenDashboardTCP recebe comandos do operador e mantém a conexão viva enquanto o dashboard estiver ativo.
 func ListenDashboardTCP(gs *GlobalState) {
 	listener, err := net.Listen("tcp", ":8083")
 	if err != nil {
@@ -296,7 +286,6 @@ func ListenDashboardTCP(gs *GlobalState) {
 
 				if msg.Tipo == "CMD" && msg.Acao == "REQUISICAO_MANUAL" {
 					fmt.Printf("👨‍💻 Operador solicitou inspeção manual para: %s\n", msg.Posicao)
-					// Enfileirar como alerta normal (prioridade 1)
 					if !gs.AlertQueue.EnqueueAlert(msg.Posicao, 1) {
 						fmt.Printf("⚠️ [%s] Alerta manual rejeitado por fila cheia: %s\n", msg.Remetente, msg.Posicao)
 					}
@@ -306,7 +295,7 @@ func ListenDashboardTCP(gs *GlobalState) {
 	}
 }
 
-// LimparFrotaExpirada remove drones sem atualização recente para evitar fantasmas após failover.
+// LimparFrotaExpirada remove drones sem atualização recente para evitar registros fantasmas após failover.
 func LimparFrotaExpirada(gs *GlobalState, ttl time.Duration) {
 	limite := time.Now().Add(-ttl).UnixNano()
 
