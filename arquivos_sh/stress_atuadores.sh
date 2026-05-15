@@ -18,9 +18,10 @@ docker pull "$IMG_DRONE" >/dev/null
 for i in $(seq 1 "$QTD_SALAS"); do
     HEX_I=$(printf '%02X' $i)
     MAC_ADDR=$(printf '02:%02X:%02X:%02X:%02X:%s' $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) "$HEX_I")
+    MAC_TAG=${MAC_ADDR//:/}
     echo "  -> Subindo Drone com MAC: $MAC_ADDR"
-    docker run -d --name "stress_drone_$i" \
-        -e SERVER_ADDRS="$IP_GATEWAY1:8082,$IP_GATEWAY2:8082,$IP_GATEWAY3:8082,$IP_GATEWAY4:8082" \
+    docker run -d --name "stress_drone_${MAC_TAG}" \
+        -e SERVER_ADDRS="$IP_GATEWAY1:48082,$IP_GATEWAY2:48082,$IP_GATEWAY3:48082,$IP_GATEWAY4:48082" \
         -e DRONE_ID="$MAC_ADDR" \
         "$IMG_DRONE" > /dev/null
 done

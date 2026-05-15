@@ -222,7 +222,7 @@ export MEU_SETOR=SETOR_06 PEERS=localhost:9084,localhost:10084
 ./servidor_local
 
 # Terminal 2: SETOR_07
-export MEU_SETOR=SETOR_07 PEERS=localhost:8084,localhost:10084
+export MEU_SETOR=SETOR_07 PEERS=localhost:48084,localhost:10084
 ./servidor_local
 
 # Validar logs: 🤝 Vizinho registado, 📊 QUEUE STATUS
@@ -233,7 +233,7 @@ export MEU_SETOR=SETOR_07 PEERS=localhost:8084,localhost:10084
 # Simular 100 alertas em 1s
 for i in {1..100}; do
   echo '{"tipo":"EVT","acao":"ALERTA","posicao":"40.2,-72.5"}' | \
-  nc -w 1 localhost 8081 &
+   nc -w 1 localhost 48081 &
 done
 
 # Validar: Queue buffer não estoura, CPU < 50%, sem panics
@@ -271,7 +271,7 @@ services:
       - PEERS=172.16.201.6:9000,172.16.201.7:9000,172.16.201.8:9000
       - MY_IP=172.16.201.5
     ports:
-      - "8080:8080"  # Clientes (sensores, drones, dashboard)
+      - "48080:48080"  # Clientes (sensores, drones, dashboard)
       - "9000:9000"  # P2P ao servidor6
   servidor6:
     environment:

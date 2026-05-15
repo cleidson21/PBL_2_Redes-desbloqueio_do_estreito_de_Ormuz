@@ -7,8 +7,19 @@ import (
 	"time"
 )
 
+// EnviarEventoRequisicao replica o estado da requisição para os dashboards conectados.
+func EnviarEventoRequisicao(gs *GlobalState, id string, status string, prioridade int, lamport int) {
+	AtualizarDashboards(gs, Mensagem{
+		Tipo:       "REQ_UPDATE",
+		Remetente:  id,
+		Acao:       status,
+		Prioridade: prioridade,
+		Relogio:    lamport,
+	})
+}
+
 // IniciarRequisicaoDrone inicia a negociação de exclusão mútua antes de despachar um drone.
-func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada string) {
+func IniciarRequisicaoDrone(gs *GlobalState, id string, prioridadeInicial int, coordenada string) {
 	// A requisição só pode prosseguir quando a seção crítica local estiver realmente livre.
 	for {
 		gs.RicartMu.Lock()
@@ -24,10 +35,12 @@ func IniciarRequisicaoDrone(gs *GlobalState, prioridadeInicial int, coordenada s
 	}
 
 	gs.EstadoRicart = "ESPERANDO"
+	gs.RequisicaoAtualID = id
 	gs.MinhaPrioridade = prioridadeInicial
 	gs.AlvoAtual = coordenada
 	gs.AcksRecebidos = 0
 	gs.MeuTempoPedido = TickLamport(gs)
+	EnviarEventoRequisicao(gs, id, "WAITING", prioridadeInicial, gs.MeuTempoPedido)
 	gs.RicartMu.Unlock()
 
 	gs.VizinhosMu.RLock()
@@ -120,14 +133,15 @@ func VerificarConsenso(gs *GlobalState) {
 	if gs.AcksRecebidos >= vivos {
 		gs.EstadoRicart = "USANDO"
 		gs.ContadorAging = 0
+		fmt.Printf("🏆 [RICART] CONSENSO ALCANÇADO! (Req: Prioridade=%d, Lamport=%d) | ACKs: %d/%d\n", gs.MinhaPrioridade, gs.MeuTempoPedido, gs.AcksRecebidos, vivos)
 
 		// O despacho roda fora do lock para não bloquear novas mensagens de controle.
-		go ExecutarDespacho(gs, gs.AlvoAtual)
+		go ExecutarDespacho(gs, gs.RequisicaoAtualID, gs.AlvoAtual)
 	}
 }
 
 // ExecutarDespacho escolhe um drone livre e encaminha o comando para o setor correto.
-func ExecutarDespacho(gs *GlobalState, coordenada string) {
+func ExecutarDespacho(gs *GlobalState, requisicaoID string, coordenada string) {
 	var droneEscolhido string
 	var setorDoDrone string
 
@@ -145,12 +159,13 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 	gs.FrotaMu.RUnlock()
 
 	if droneEscolhido == "" {
-		fmt.Println("⚠️ Alarme: Nenhum drone LIVRE encontrado na rede! A abortar requisição para evitar deadlock.")
+		if ok := gs.AlertQueue.EnqueueAlert(gs, coordenada, gs.MinhaPrioridade, requisicaoID); !ok {
+			fmt.Printf("⚠️ [RACE CONDITION] Falha ao re-enfileirar alerta %s após perder o drone.\n", coordenada)
+		}
+		fmt.Printf("⚠️ [RACE CONDITION] Consenso ganho, mas drones foram tomados por vizinhos. Abortando e re-enfileirando alerta (%s).\n", coordenada)
 		LiberarDrone(gs)
 		return
 	}
-
-	fmt.Printf("🎯 Decisão P2P: O Drone escolhido foi o [%s] (pertence ao setor %s)\n", droneEscolhido, setorDoDrone)
 
 	gs.FrotaMu.Lock()
 	if estado, ok := gs.FrotaGlobal[droneEscolhido]; ok {
@@ -183,7 +198,8 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 				}
 				gs.FrotaMu.Unlock()
 			} else {
-				fmt.Printf("🚀 Ordem de despacho enviada DIRETAMENTE ao drone local %s para %s! (bytes: %d)\n", droneEscolhido, coordenada, n)
+				fmt.Printf("🎯 [DESPACHO LOCAL] Alvo: %s | Drone: %s (P:%d | L:%d)\n", coordenada, droneEscolhido, gs.MinhaPrioridade, gs.MeuTempoPedido)
+				EnviarEventoRequisicao(gs, requisicaoID, "EXECUTED", gs.MinhaPrioridade, gs.MeuTempoPedido)
 			}
 		} else {
 			fmt.Printf("⚠️ Drone local %s não está conectado em DronesLocais!\n", droneEscolhido)
@@ -219,7 +235,8 @@ func ExecutarDespacho(gs *GlobalState, coordenada string) {
 				}
 				gs.FrotaMu.Unlock()
 			} else {
-				fmt.Printf("📡 Ordem de despacho enviada VIA P2P para o setor %s comandar %s para %s! (bytes: %d)\n", setorDoDrone, droneEscolhido, coordenada, n)
+				fmt.Printf("🎯 [DESPACHO P2P] Alvo: %s | Drone: %s (Gateway: %s) (P:%d | L:%d)\n", coordenada, droneEscolhido, setorDoDrone, gs.MinhaPrioridade, gs.MeuTempoPedido)
+				EnviarEventoRequisicao(gs, requisicaoID, "EXECUTED", gs.MinhaPrioridade, gs.MeuTempoPedido)
 			}
 		} else {
 			fmt.Printf("⚠️ Vizinho %s não está conectado em Vizinhos!\n", setorDoDrone)
@@ -242,6 +259,7 @@ func LiberarDrone(gs *GlobalState) {
 	defer gs.RicartMu.Unlock()
 
 	gs.EstadoRicart = "LIVRE"
+	gs.RequisicaoAtualID = ""
 
 	gs.VizinhosMu.RLock()
 	for _, reqAntiga := range gs.FilaDeEspera {

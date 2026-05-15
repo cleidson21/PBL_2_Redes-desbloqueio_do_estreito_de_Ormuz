@@ -71,7 +71,7 @@ func main() {
 		addrVars = os.Getenv("SERVER_ADDR")
 	}
 	if addrVars == "" {
-		addrVars = "localhost:8082"
+		addrVars = "localhost:48082"
 	}
 
 	listaServidores := strings.Split(addrVars, ",")

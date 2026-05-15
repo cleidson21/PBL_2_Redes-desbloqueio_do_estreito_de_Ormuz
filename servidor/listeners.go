@@ -55,10 +55,10 @@ func registrarEstadoDrone(gs *GlobalState, droneID string, estado EstadoDrone) {
 
 // ListenSensoresTLM consome telemetria UDP, aplica histerese por sensor e enfileira alertas de clima.
 func ListenSensoresTLM(gs *GlobalState) {
-	addr, _ := net.ResolveUDPAddr("udp", ":8080")
+	addr, _ := net.ResolveUDPAddr("udp", ":48080")
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		fmt.Printf("❌ [%s] Erro ao iniciar porta UDP 8080: %v\n", gs.MeuNamespace, err)
+		fmt.Printf("❌ [%s] Erro ao iniciar porta UDP 48080: %v\n", gs.MeuNamespace, err)
 		return
 	}
 	defer conn.Close()
@@ -101,7 +101,7 @@ func ListenSensoresTLM(gs *GlobalState) {
 				}
 				// A histerese evita alertas repetidos enquanto o vento permanece acima do limiar.
 				fmt.Printf("  🌪️  [ALERTA CLIMÁTICO] Vento forte detetado (%.2f km/h) em %s (sensor: %s). Acionando patrulha drone!\n", valorAtualVento, posicao, msg.Remetente)
-				if !gs.AlertQueue.EnqueueAlert(posicao, 1) {
+				if !gs.AlertQueue.EnqueueAlert(gs, posicao, 1, "") {
 					fmt.Printf("⚠️ [ALERTA CLIMÁTICO] Falha ao enfileirar alerta para %s\n", posicao)
 				}
 
@@ -123,9 +123,9 @@ func ListenSensoresTLM(gs *GlobalState) {
 
 // ListenRadarTCP consome eventos críticos TCP, sincroniza Lamport e distribui alertas para o restante do sistema.
 func ListenRadarTCP(gs *GlobalState) {
-	listener, err := net.Listen("tcp", ":8081")
+	listener, err := net.Listen("tcp", ":48081")
 	if err != nil {
-		fmt.Printf("❌ [%s] Erro ao abrir porta TCP 8081: %v\n", gs.MeuNamespace, err)
+		fmt.Printf("❌ [%s] Erro ao abrir porta TCP 48081: %v\n", gs.MeuNamespace, err)
 		return
 	}
 	defer listener.Close()
@@ -151,7 +151,7 @@ func ListenRadarTCP(gs *GlobalState) {
 
 				if msg.Tipo == "EVT" && msg.Acao == "ALERTA" {
 					AtualizarDashboards(gs, msg)
-					if !gs.AlertQueue.EnqueueAlert(msg.Posicao, 2) {
+					if !gs.AlertQueue.EnqueueAlert(gs, msg.Posicao, 2, "") {
 						fmt.Printf("⚠️ [%s] Alerta crítico rejeitado por fila cheia: %s\n", msg.Remetente, msg.Posicao)
 					}
 				}
@@ -162,9 +162,9 @@ func ListenRadarTCP(gs *GlobalState) {
 
 // ListenDrones mantém o estado da frota sincronizado com registros e ACKs dos drones.
 func ListenDrones(gs *GlobalState) {
-	listener, err := net.Listen("tcp", ":8082")
+	listener, err := net.Listen("tcp", ":48082")
 	if err != nil {
-		fmt.Printf("❌ [%s] Erro ao abrir porta TCP 8082: %v\n", gs.MeuNamespace, err)
+		fmt.Printf("❌ [%s] Erro ao abrir porta TCP 48082: %v\n", gs.MeuNamespace, err)
 		return
 	}
 	defer listener.Close()
@@ -248,9 +248,9 @@ func ListenDrones(gs *GlobalState) {
 
 // ListenDashboardTCP recebe comandos do operador e mantém a conexão viva enquanto o dashboard estiver ativo.
 func ListenDashboardTCP(gs *GlobalState) {
-	listener, err := net.Listen("tcp", ":8083")
+	listener, err := net.Listen("tcp", ":48083")
 	if err != nil {
-		fmt.Printf("❌ [%s] Erro ao abrir porta TCP 8083: %v\n", gs.MeuNamespace, err)
+		fmt.Printf("❌ [%s] Erro ao abrir porta TCP 48083: %v\n", gs.MeuNamespace, err)
 		return
 	}
 	defer listener.Close()
@@ -286,7 +286,7 @@ func ListenDashboardTCP(gs *GlobalState) {
 
 				if msg.Tipo == "CMD" && msg.Acao == "REQUISICAO_MANUAL" {
 					fmt.Printf("👨‍💻 Operador solicitou inspeção manual para: %s\n", msg.Posicao)
-					if !gs.AlertQueue.EnqueueAlert(msg.Posicao, 1) {
+					if !gs.AlertQueue.EnqueueAlert(gs, msg.Posicao, 1, "") {
 						fmt.Printf("⚠️ [%s] Alerta manual rejeitado por fila cheia: %s\n", msg.Remetente, msg.Posicao)
 					}
 				}

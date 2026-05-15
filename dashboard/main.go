@@ -13,14 +13,15 @@ import (
 
 // Mensagem representa o contrato JSON trocado com o broker.
 type Mensagem struct {
-	Tipo      string                 `json:"tipo"`
-	Remetente string                 `json:"remetente,omitempty"`
-	Destino   string                 `json:"destino,omitempty"`
-	Relogio   int                    `json:"relogio,omitempty"`
-	Acao      string                 `json:"acao,omitempty"`
-	Valor     string                 `json:"valor,omitempty"`
-	Posicao   string                 `json:"posicao,omitempty"`
-	Frota     map[string]EstadoDrone `json:"frota,omitempty"`
+	Tipo       string                 `json:"tipo"`
+	Remetente  string                 `json:"remetente,omitempty"`
+	Destino    string                 `json:"destino,omitempty"`
+	Relogio    int                    `json:"relogio,omitempty"`
+	Prioridade int                    `json:"prioridade,omitempty"`
+	Acao       string                 `json:"acao,omitempty"`
+	Valor      string                 `json:"valor,omitempty"`
+	Posicao    string                 `json:"posicao,omitempty"`
+	Frota      map[string]EstadoDrone `json:"frota,omitempty"`
 }
 
 // EstadoDrone descreve o snapshot mais recente de um drone na frota.
@@ -29,10 +30,20 @@ type EstadoDrone struct {
 	Setor  string `json:"setor"`
 }
 
+// Requisicao representa o histórico recente de exclusão mútua exibido no painel.
+type Requisicao struct {
+	ID         string
+	Prioridade int
+	Lamport    int
+	Status     string
+	Timestamp  int64
+}
+
 var (
 	mu          sync.RWMutex
 	frota       = make(map[string]EstadoDrone)
 	alertas     = make([]string, 0)
+	requisicoes = make([]Requisicao, 0)
 	telemetrias = make([]string, 0)
 
 	connMu     sync.RWMutex
@@ -129,7 +140,7 @@ func manterConexaoComBroker(addrVars string) {
 func main() {
 	addrVars := os.Getenv("SERVER_ADDRS")
 	if addrVars == "" {
-		addrVars = "localhost:8083"
+		addrVars = "localhost:48083"
 	}
 
 	go manterConexaoComBroker(addrVars)
@@ -250,6 +261,28 @@ func ouvirRede(conn net.Conn) {
 				alertas = alertas[1:]
 			}
 		}
+
+		if msg.Tipo == "REQ_UPDATE" {
+			requisicao := Requisicao{
+				ID:         msg.Remetente,
+				Prioridade: msg.Prioridade,
+				Lamport:    msg.Relogio,
+				Status:     strings.ToUpper(strings.TrimSpace(msg.Acao)),
+				Timestamp:  time.Now().UnixNano(),
+			}
+
+			for i := range requisicoes {
+				if requisicoes[i].ID == requisicao.ID {
+					requisicoes = append(requisicoes[:i], requisicoes[i+1:]...)
+					break
+				}
+			}
+
+			requisicoes = append(requisicoes, requisicao)
+			if len(requisicoes) > 20 {
+				requisicoes = requisicoes[len(requisicoes)-20:]
+			}
+		}
 		mu.Unlock()
 	}
 }
@@ -291,12 +324,16 @@ func imprimirPainel() {
 		}
 	}
 
-	fmt.Println("\n📡 === LEITURAS DE TELEMETRIA ===")
-	if len(telemetrias) == 0 {
-		fmt.Println("  Nenhuma telemetria recente.")
+	fmt.Println("\n📜 === HISTÓRICO DE EXCLUSÃO MÚTUA ===")
+	if len(requisicoes) == 0 {
+		fmt.Println("  Nenhuma requisição recente.")
 	} else {
-		for i := len(telemetrias) - 1; i >= 0; i-- {
-			fmt.Printf("  📊 %s\n", telemetrias[i])
+		fmt.Printf("  %-28s %-5s %-8s %-12s %-19s\n", "ID", "Prio", "Lamport", "Status", "Hora de Execução")
+		fmt.Println("  -----------------------------------------------------------------------------")
+		for i := len(requisicoes) - 1; i >= 0; i-- {
+			req := requisicoes[i]
+			instante := time.Unix(0, req.Timestamp).Format("02/01 15:04:05")
+			fmt.Printf("  %-28s %-5d %-8d %-12s %-19s\n", req.ID, req.Prioridade, req.Lamport, req.Status, instante)
 		}
 	}
 

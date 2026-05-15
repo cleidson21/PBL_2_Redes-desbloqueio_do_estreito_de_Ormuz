@@ -10,9 +10,9 @@ import (
 
 // ListenP2P aceita mensagens entre vizinhos e mantém a malha local sincronizada.
 func ListenP2P(gs *GlobalState) {
-	listener, err := net.Listen("tcp", ":8084")
+	listener, err := net.Listen("tcp", ":48084")
 	if err != nil {
-		fmt.Printf("❌ [%s] Erro ao iniciar porta P2P 8084: %v\n", gs.MeuNamespace, err)
+		fmt.Printf("❌ [%s] Erro ao iniciar porta P2P 48084: %v\n", gs.MeuNamespace, err)
 		return
 	}
 	defer listener.Close()

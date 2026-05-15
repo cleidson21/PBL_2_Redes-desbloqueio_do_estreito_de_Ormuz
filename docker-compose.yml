@@ -4,14 +4,14 @@ services:
     container_name: servidor_ormuz_a
     environment:
       MEU_SETOR: SETOR_A
-      PEERS: servidor_b:8084,servidor_c:8084
+      PEERS: servidor_b:48084,servidor_c:48084
     networks:
       - rede_ormuz
     ports:
-      - "8080:8080/udp"
-      - "8081:8081/tcp"
-      - "8082:8082/tcp"
-      - "8083:8083/tcp"
+      - "48080:48080/udp"
+      - "48081:48081/tcp"
+      - "48082:48082/tcp"
+      - "48083:48083/tcp"
     restart: always
 
   servidor_b:
@@ -19,14 +19,14 @@ services:
     container_name: servidor_ormuz_b
     environment:
       MEU_SETOR: SETOR_B
-      PEERS: servidor_a:8084,servidor_c:8084
+      PEERS: servidor_a:48084,servidor_c:48084
     networks:
       - rede_ormuz
     ports:
-      - "8090:8080/udp"
-      - "8091:8081/tcp"
-      - "8092:8082/tcp"
-      - "8093:8083/tcp"
+      - "48090:48080/udp"
+      - "48091:48081/tcp"
+      - "48092:48082/tcp"
+      - "48093:48083/tcp"
     restart: always
 
   servidor_c:
@@ -34,14 +34,14 @@ services:
     container_name: servidor_ormuz_c
     environment:
       MEU_SETOR: SETOR_C
-      PEERS: servidor_a:8084,servidor_b:8084
+      PEERS: servidor_a:48084,servidor_b:48084
     networks:
       - rede_ormuz
     ports:
-      - "8100:8080/udp"
-      - "8101:8081/tcp"
-      - "8102:8082/tcp"
-      - "8103:8083/tcp"
+      - "48100:48080/udp"
+      - "48101:48081/tcp"
+      - "48102:48082/tcp"
+      - "48103:48083/tcp"
     restart: always
 
   dashboard:
@@ -52,7 +52,7 @@ services:
       - servidor_b
       - servidor_c
     environment:
-      SERVER_ADDRS: servidor_a:8083,servidor_b:8083,servidor_c:8083
+      SERVER_ADDRS: servidor_a:48083,servidor_b:48083,servidor_c:48083
     networks:
       - rede_ormuz
     stdin_open: true
@@ -67,7 +67,7 @@ services:
       - servidor_b
       - servidor_c
     environment:
-      SERVER_ADDRS: servidor_a:8082,servidor_b:8082,servidor_c:8082
+      SERVER_ADDRS: servidor_a:48082,servidor_b:48082,servidor_c:48082
       DRONE_ID: DRONE_01
     networks:
       - rede_ormuz
@@ -81,7 +81,7 @@ services:
       - servidor_b
       - servidor_c
     environment:
-      SERVER_ADDRS: servidor_a:8081,servidor_b:8081,servidor_c:8081
+      SERVER_ADDRS: servidor_a:48081,servidor_b:48081,servidor_c:48081
       SENSOR_ID: RADAR_01
       SENSOR_TIPO: RADAR
     networks:
@@ -96,7 +96,7 @@ services:
       - servidor_b
       - servidor_c
     environment:
-      SERVER_ADDRS: servidor_a:8080,servidor_b:8080,servidor_c:8080
+      SERVER_ADDRS: servidor_a:48080,servidor_b:48080,servidor_c:48080
       SENSOR_ID: BOIA_01
     networks:
       - rede_ormuz

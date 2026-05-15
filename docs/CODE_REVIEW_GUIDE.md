@@ -130,13 +130,13 @@ Este documento organiza os arquivos por ordem de revisão recomendada, com ponto
 - `HabilitarKeepAlive()` - TCP keep-alive
 - `EnriquecerIdentidade()` - Adiciona namespace "ORMUZ/SETOR_XX"
 - `AtualizarDashboards()` - Broadcast a todos dashboards
-- `ListenSensoresTLM()` - UDP listener (porta 8080)
-- `ListenRadarTCP()` - TCP listener (porta 8081) - EVT/ALERTA → EnqueueAlert(p=2)
-- `ListenDrones()` - TCP listener (porta 8082) - REG de drones + ACK de status
-- `ListenDashboardTCP()` - TCP listener (porta 8083) - CMD/REQUISICAO_MANUAL → EnqueueAlert(p=1)
+ - `ListenSensoresTLM()` - UDP listener (porta 48080)
+ - `ListenRadarTCP()` - TCP listener (porta 48081) - EVT/ALERTA → EnqueueAlert(p=2)
+ - `ListenDrones()` - TCP listener (porta 48082) - REG de drones + ACK de status
+ - `ListenDashboardTCP()` - TCP listener (porta 48083) - CMD/REQUISICAO_MANUAL → EnqueueAlert(p=1)
 
 **Checklist:**
-- [ ] TLM vem via UDP (8080) e vai direto ao dashboard? Sim ✅
+- [ ] TLM vem via UDP (48080) e vai direto ao dashboard? Sim ✅
 - [ ] Radar EVT/ALERTA entra na fila crítica? Sim, `EnqueueAlert(msg.Posicao, 2)` ✅
 - [ ] Dashboard manual requisições entram na fila normal? Sim, `EnqueueAlert(msg.Posicao, 1)` ✅
 - [ ] Drone REG registra conexão em `DronesLocais`? Sim ✅
@@ -193,7 +193,7 @@ INICIALIZAÇÃO
 └─ main.go inicia AlertQueue.StartConsumer()
 
 RECEBIMENTO DE ALERTA (Radar)
-├─ Radar conecta em ListenRadarTCP (:8081)
+├─ Radar conecta em ListenRadarTCP (:48081)
 ├─ Recebe EVT/ALERTA
 ├─ EnriquecerIdentidade() adiciona namespace
 ├─ AtualizarDashboards() notifica dashboard

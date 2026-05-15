@@ -84,19 +84,19 @@ flowchart LR
     T --> C
 ```
 
-Notas:
+Notes:
 
-- O tráfego entre servidores usa a porta `8084/tcp`.
+- O tráfego entre servidores usa a porta `48084/tcp`.
 - Os clientes usam `SERVER_ADDRS` para failover round-robin.
 
 ## Componentes e papéis
 
 ### Servidor
-- Recebe telemetria UDP na porta `8080`.
-- Recebe eventos TCP na porta `8081`.
-- Recebe drones na porta `8082`.
-- Recebe dashboard na porta `8083`.
-- Mantém a malha P2P na porta `8084`.
+- Recebe telemetria UDP na porta `48080`.
+- Recebe eventos TCP na porta `48081`.
+- Recebe drones na porta `48082`.
+- Recebe dashboard na porta `48083`.
+- Mantém a malha P2P na porta `48084`.
 - Coordena despacho com Ricart-Agrawala.
 - Usa fila de alertas com prioridade e starvation prevention.
 
@@ -180,17 +180,17 @@ Campos usados no JSON, conforme o tipo:
 
 | Protocolo | Porta | Uso |
 | --- | --- | --- |
-| UDP | 8080 | Entrada de telemetria |
-| TCP | 8081 | Entrada de eventos |
-| TCP | 8082 | Registro e controle de drones |
-| TCP | 8083 | Conexão do dashboard |
-| TCP | 8084 | Malha P2P entre servidores |
+| UDP | 48080 | Entrada de telemetria |
+| TCP | 48081 | Entrada de eventos |
+| TCP | 48082 | Registro e controle de drones |
+| TCP | 48083 | Conexão do dashboard |
+| TCP | 48084 | Malha P2P entre servidores |
 
 ### Exemplo de mapeamento no host
 
-| Setor | UDP 8080 | TCP 8081 | TCP 8082 | TCP 8083 |
+| Setor | UDP 48080 | TCP 48081 | TCP 48082 | TCP 48083 |
 | --- | --- | --- | --- | --- |
-| A | 8080 | 8081 | 8082 | 8083 |
+| A | 48080 | 48081 | 48082 | 48083 |
 | B | 8090 | 8091 | 8092 | 8093 |
 | C | 8100 | 8101 | 8102 | 8103 |
 
@@ -277,6 +277,32 @@ Se quiser entender o projeto em camadas, a ordem mais útil é:
 ## Observação sobre documentação oficial
 
 Sim, essa separação é comum em documentação oficial: uma página principal curta e estável, e páginas auxiliares por tema, como arquitetura, testes, release notes e guia de revisão. É exatamente o que este repositório agora segue.
+
+---
+
+## Build & Push de imagens (Docker)
+
+Os seguintes comandos constavam em scripts auxiliares; incluí aqui para facilitar workflows de laboratório.
+
+Build das imagens (na raiz deste repositório):
+
+```bash
+docker build -t cleidsonramos/servidor:latest ./servidor
+docker build -t cleidsonramos/dashboard:latest ./dashboard
+docker build -t cleidsonramos/sensor_tlm:latest ./sensor_tlm
+docker build -t cleidsonramos/radar_tcp:latest ./radar_tcp
+docker build -t cleidsonramos/drone:latest ./drone
+```
+
+Push (envie para seu registry):
+
+```bash
+docker push cleidsonramos/servidor:latest
+docker push cleidsonramos/dashboard:latest
+docker push cleidsonramos/sensor_tlm:latest
+docker push cleidsonramos/radar_tcp:latest
+docker push cleidsonramos/drone:latest
+```
 
 ---
 

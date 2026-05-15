@@ -19,7 +19,7 @@ echo "Identidade Única (MAC): $DASH_ID"
 docker pull "$IMG_DASHBOARD" >/dev/null
 
 docker run -dit --name "dashboard_ormuz" \
--e SERVER_ADDRS="$IP_GATEWAY1:8083,$IP_GATEWAY2:8083,$IP_GATEWAY3:8083,$IP_GATEWAY4:8083" \
+-e SERVER_ADDRS="$IP_GATEWAY1:48083,$IP_GATEWAY2:48083,$IP_GATEWAY3:48083,$IP_GATEWAY4:48083" \
 -e DASHBOARD_ID="$DASH_ID" \
 "$IMG_DASHBOARD" > /dev/null
 

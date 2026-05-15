@@ -18,7 +18,7 @@ Validar que um servidor consegue receber registros de sensor, enfileirar alertas
 cd /home/cleidson/PBL_2_Redes-desbloqueio_do_estreito_de_Ormuz
 docker-compose up servidor5 -d
 sleep 2
-# Logs: "Servidor iniciado em 172.16.201.5:8080"
+# Logs: "Servidor iniciado em 172.16.201.5:48080"
 ```
 
 **Máquina 2 (172.16.201.6):**
@@ -39,7 +39,7 @@ bash stress_sensores.sh 1  # QTD_SALAS=1
 **Máquina 1 - Iniciar 1 drone:**
 ```bash
 bash stress_atuadores.sh 1  # QTD_SALAS=1
-# Spawns: drone_1 registrado em 172.16.201.5:8080
+# Spawns: drone_1 registrado em 172.16.201.5:48080
 # Initial GW: 172.16.201.5 (primário)
 ```
 
@@ -80,7 +80,7 @@ bash stress_atuadores.sh 1  # QTD_SALAS=1
 
 ### 🛑 Troubleshooting
 - **Sensor não conecta:** `docker logs sensor_tlm_1 | grep "ERROR\|FAIL"`
-- **Drone não registra:** `netstat -an | grep 172.16.201.5:8080`
+- **Drone não registra:** `netstat -an | grep 172.16.201.5:48080`
 - **Gossip falha:** `docker logs servidor6 | grep "P2P_ERROR\|SYNC_FAIL"`
 
 ---
@@ -397,11 +397,11 @@ func TestLamportSync(t *testing.T) {
 **Setup:**
 ```bash
 # Terminal 1
-export MEU_SETOR=SETOR_06 PEERS=localhost:8084
+export MEU_SETOR=SETOR_06 PEERS=localhost:48084
 ./servidor_local
 
 # Terminal 2
-export SENSOR_ID=SENSOR_VENTO_01 SERVER_ADDRS=localhost:8080
+export SENSOR_ID=SENSOR_VENTO_01 SERVER_ADDRS=localhost:48080
 ./sensor_tlm_local
 
 # Monitorar output: deve ver "🚨 [THRESHOLD ALERT]" quando valor > 70 por 2 leituras
@@ -416,7 +416,7 @@ export SENSOR_ID=SENSOR_VENTO_01 SERVER_ADDRS=localhost:8080
 **Setup:**
 ```bash
 # Simular 2 setor (em máquinas diferentes ou portas diferentes)
-SETOR_06: :8084 (P2P), :8080 (UDP), :8081-83 (TCP)
+SETOR_06: :48084 (P2P), :48080 (UDP), :48081-83 (TCP)
 SETOR_07: :9084 (P2P), :9080 (UDP), :9081-83 (TCP)
 ```
 
@@ -439,7 +439,7 @@ SETOR_07: :9084 (P2P), :9080 (UDP), :9081-83 (TCP)
 # Simular picos de radar (múltiplas conexões)
 for i in {1..100}; do
     echo '{"tipo":"EVT","acao":"ALERTA","posicao":"40.2,-72.5"}' | \
-    nc -w 1 localhost 8081 &
+   nc -w 1 localhost 48081 &
 done
 wait
 

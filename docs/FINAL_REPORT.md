@@ -160,7 +160,7 @@ $ cd ../sensor_tlm && go build -o sensor_tlm_v2
 ### Compatibilidade ✅
 ```
 ✅ Protocolos P2P inalterados (P2P_REQ, ACK, EVT, ALERTA, etc.)
-✅ Portas TCP/UDP inalteradas (:8080-8084)
+✅ Portas TCP/UDP inalteradas (:48080-8084)
 ✅ Variáveis ambiente inalteradas (MEU_SETOR, PEERS)
 ✅ Docker build automático detecta todos .go (go build -o servidor .)
 ✅ Nenhuma mudança necessária em Dockerfile
@@ -201,8 +201,8 @@ cd servidor && go build -o servidor_local
 cd ../sensor_tlm && go build -o sensor_tlm_local
 
 # Simular 4 setores em máquinas diferentes
-SETOR_06: MEU_SETOR=SETOR_06 PEERS=host07:8084,host08:8084 ./servidor_local
-SETOR_07: MEU_SETOR=SETOR_07 PEERS=host06:8084,host08:8084 ./servidor_local
+SETOR_06: MEU_SETOR=SETOR_06 PEERS=host07:48084,host08:48084 ./servidor_local
+SETOR_07: MEU_SETOR=SETOR_07 PEERS=host06:48084,host08:48084 ./servidor_local
 ...
 ```
 

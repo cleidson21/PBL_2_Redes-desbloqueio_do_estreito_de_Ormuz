@@ -39,7 +39,7 @@ for i in $(seq "$IP_INICIO" "$IP_FIM"); do
     if [[ "$i" == "$HOST_OCTET" ]]; then
         continue
     fi
-    PEERS_LIST+=("${IP_PREFIX}.${i}:8084")
+    PEERS_LIST+=("${IP_PREFIX}.${i}:48084")
 done
 
 PEERS="${PEERS:-$(IFS=,; echo "${PEERS_LIST[*]}")}"
@@ -57,11 +57,11 @@ else
 fi
 
 docker run -d --name servidor_ormuz \
-    -p 8080:8080/udp \
-    -p 8081:8081/tcp \
-    -p 8082:8082/tcp \
-    -p 8083:8083/tcp \
-    -p 8084:8084/tcp \
+    -p 48080:48080/udp \
+    -p 48081:48081/tcp \
+    -p 48082:48082/tcp \
+    -p 48083:48083/tcp \
+    -p 48084:48084/tcp \
     -e MEU_SETOR="$NOME_SETOR" \
     -e PEERS="$PEERS" \
     "$IMAGE_SERVIDOR"

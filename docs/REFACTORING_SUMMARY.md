@@ -100,7 +100,7 @@ Depois:  8 ficheiros (max 200 linhas cada)          ✅ Fácil manutenção
 ### Compatibilidade Retroativa ✅
 ```
 ✅ Protocolos P2P inalterados (P2P_REQ, ACK, EVT, etc.)
-✅ Portas TCP/UDP inalteradas (:8080-8084)
+✅ Portas TCP/UDP inalteradas (:48080-8084)
 ✅ Variáveis ambiente inalteradas (MEU_SETOR, PEERS)
 ✅ Docker build: `go build -o servidor .` reconhece todos .go
 ```
@@ -140,15 +140,15 @@ services:
     image: servidor:v2.0
     environment:
       MEU_SETOR: SETOR_06
-      PEERS: servidor_07:8084,servidor_08:8084
+      PEERS: servidor_07:48084,servidor_08:48084
     ports:
-      - "8080-8084:8080-8084"
+      - "48080-48084:48080-48084"
       
   sensor_tlm:
     image: sensor_tlm:v2.0
     environment:
       SENSOR_ID: SENSOR_VENTO_01
-      SERVER_ADDRS: servidor_06:8080
+      SERVER_ADDRS: servidor_06:48080
 ```
 
 ### Deploy (sem downtime esperado)

@@ -34,7 +34,7 @@ func main() {
 		addrVars = os.Getenv("SERVER_ADDR")
 	}
 	if addrVars == "" {
-		addrVars = "localhost:8080"
+		addrVars = "localhost:48080"
 	}
 	listaServidores := strings.Split(addrVars, ",")
 	idxServidor := 0

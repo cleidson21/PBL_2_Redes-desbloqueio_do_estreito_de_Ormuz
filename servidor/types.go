@@ -31,6 +31,7 @@ type Alert struct {
 	Prioridade    int
 	Timestamp     int64
 	ID            string
+	Lamport       int
 	StarveCounter int
 }
 
@@ -68,14 +69,15 @@ type GlobalState struct {
 	FrotaMu     sync.RWMutex
 	FrotaGlobal map[string]EstadoDrone
 
-	RicartMu        sync.Mutex
-	EstadoRicart    string
-	MeuTempoPedido  int
-	MinhaPrioridade int
-	ContadorAging   int
-	AcksRecebidos   int
-	FilaDeEspera    []Mensagem
-	AlvoAtual       string
+	RicartMu          sync.Mutex
+	EstadoRicart      string
+	MeuTempoPedido    int
+	MinhaPrioridade   int
+	RequisicaoAtualID string
+	ContadorAging     int
+	AcksRecebidos     int
+	FilaDeEspera      []Mensagem
+	AlvoAtual         string
 
 	AlertQueue *AlertQueue
 }

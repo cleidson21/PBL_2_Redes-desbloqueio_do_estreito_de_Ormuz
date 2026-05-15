@@ -6,7 +6,7 @@ import (
 )
 
 // EnqueueAlert insere um alerta na fila correta respeitando o limite de capacidade de cada prioridade.
-func (aq *AlertQueue) EnqueueAlert(coordenada string, prioridade int) bool {
+func (aq *AlertQueue) EnqueueAlert(gs *GlobalState, coordenada string, prioridade int, idRequisicao string) bool {
 	aq.mu.Lock()
 	defer aq.mu.Unlock()
 
@@ -14,8 +14,11 @@ func (aq *AlertQueue) EnqueueAlert(coordenada string, prioridade int) bool {
 		Coordenada:    coordenada,
 		Prioridade:    prioridade,
 		Timestamp:     time.Now().UnixNano(),
-		ID:            fmt.Sprintf("%d", time.Now().UnixNano()),
+		ID:            idRequisicao,
 		StarveCounter: 0,
+	}
+	if alert.ID == "" {
+		alert.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 
 	if prioridade == 2 {
@@ -34,6 +37,8 @@ func (aq *AlertQueue) EnqueueAlert(coordenada string, prioridade int) bool {
 		fmt.Printf("📥 Alerta NORMAL enfileirado para: %s | Fila normal: %d\n", coordenada, len(aq.normal))
 	}
 
+	alert.Lamport = TickLamport(gs)
+	EnviarEventoRequisicao(gs, alert.ID, "ENQUEUED", alert.Prioridade, alert.Lamport)
 	aq.notEmpty.Signal()
 	return true
 }
@@ -102,7 +107,7 @@ func (aq *AlertQueue) StartConsumer(gs *GlobalState) {
 
 			alert := aq.DequeueAlert()
 
-			IniciarRequisicaoDrone(gs, alert.Prioridade, alert.Coordenada)
+			IniciarRequisicaoDrone(gs, alert.ID, alert.Prioridade, alert.Coordenada)
 		}
 	}()
 }
