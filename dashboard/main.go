@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -328,12 +329,29 @@ func imprimirPainel() {
 	if len(requisicoes) == 0 {
 		fmt.Println("  Nenhuma requisição recente.")
 	} else {
-		fmt.Printf("  %-28s %-5s %-8s %-12s %-19s\n", "ID", "Prio", "Lamport", "Status", "Hora de Execução")
-		fmt.Println("  -----------------------------------------------------------------------------")
-		for i := len(requisicoes) - 1; i >= 0; i-- {
+		sort.Slice(requisicoes, func(i, j int) bool {
+			if requisicoes[i].Lamport == requisicoes[j].Lamport {
+				return requisicoes[i].Prioridade > requisicoes[j].Prioridade
+			}
+			return requisicoes[i].Lamport > requisicoes[j].Lamport
+		})
+
+		fmt.Printf("  %-28s %-5s %-8s %-18s %-19s\n", "ID", "Prio", "Lamport", "Status", "Hora de Execução")
+		fmt.Println("  -----------------------------------------------------------------------------------")
+		for i := 0; i < len(requisicoes); i++ {
 			req := requisicoes[i]
 			instante := time.Unix(0, req.Timestamp).Format("02/01 15:04:05")
-			fmt.Printf("  %-28s %-5d %-8d %-12s %-19s\n", req.ID, req.Prioridade, req.Lamport, req.Status, instante)
+
+			statusFormatado := req.Status
+			if strings.Contains(req.Status, "EXECUTED") {
+				statusFormatado = "✅ " + req.Status
+			} else if strings.Contains(req.Status, "ENQUEUED") {
+				statusFormatado = "🕒 " + req.Status
+			} else if strings.Contains(req.Status, "WAITING") {
+				statusFormatado = "⏳ " + req.Status
+			}
+
+			fmt.Printf("  %-28s %-5d %-8d %-18s %-19s\n", req.ID, req.Prioridade, req.Lamport, statusFormatado, instante)
 		}
 	}
 
