@@ -17,10 +17,8 @@ func EnviarEventoRequisicao(gs *GlobalState, id string, status string, prioridad
 		Relogio:    lamport,
 	}
 	
-	// 1. Atualiza os dashboards conectados localmente (comportamento original)
 	AtualizarDashboards(gs, msg)
 
-	// 2. NOVO: Propaga o evento para os vizinhos P2P
 	msgP2P := msg
 	msgP2P.Tipo = "P2P_REQ_UPDATE" // Muda o tipo para não confundir com pacotes de clientes
 	payload, _ := json.Marshal(msgP2P)
