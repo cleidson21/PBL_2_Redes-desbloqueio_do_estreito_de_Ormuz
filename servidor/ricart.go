@@ -8,14 +8,28 @@ import (
 )
 
 // EnviarEventoRequisicao replica o estado da requisição para os dashboards conectados.
-func EnviarEventoRequisicao(gs *GlobalState, id string, status string, prioridade int, lamport int) {
-	AtualizarDashboards(gs, Mensagem{
+ffunc EnviarEventoRequisicao(gs *GlobalState, id string, status string, prioridade int, lamport int) {
+	msg := Mensagem{
 		Tipo:       "REQ_UPDATE",
 		Remetente:  id,
 		Acao:       status,
 		Prioridade: prioridade,
 		Relogio:    lamport,
-	})
+	}
+	
+	// 1. Atualiza os dashboards conectados localmente (comportamento original)
+	AtualizarDashboards(gs, msg)
+
+	// 2. NOVO: Propaga o evento para os vizinhos P2P
+	msgP2P := msg
+	msgP2P.Tipo = "P2P_REQ_UPDATE" // Muda o tipo para não confundir com pacotes de clientes
+	payload, _ := json.Marshal(msgP2P)
+
+	gs.VizinhosMu.RLock()
+	for _, conn := range gs.Vizinhos {
+		fmt.Fprintf(conn, "%s\n", payload)
+	}
+	gs.VizinhosMu.RUnlock()
 }
 
 // IniciarRequisicaoDrone inicia a negociação de exclusão mútua antes de despachar um drone.
