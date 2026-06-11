@@ -8,7 +8,7 @@ import (
 )
 
 // EnviarEventoRequisicao replica o estado da requisição para os dashboards conectados.
-ffunc EnviarEventoRequisicao(gs *GlobalState, id string, status string, prioridade int, lamport int) {
+func EnviarEventoRequisicao(gs *GlobalState, id string, status string, prioridade int, lamport int) {
 	msg := Mensagem{
 		Tipo:       "REQ_UPDATE",
 		Remetente:  id,
