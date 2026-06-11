@@ -83,6 +83,11 @@ func ManipularMensagemP2P(gs *GlobalState, conn net.Conn) {
 			gs.VizinhosMu.Unlock()
 			fmt.Printf("🤝 [%s] Vizinho registado na malha: %s\n", gs.MeuNamespace, vizinhoID)
 
+		// Dentro da função ManipularMensagemP2P, adicione este case:
+		case "P2P_REQ_UPDATE":
+			msg.Tipo = "REQ_UPDATE"
+			AtualizarDashboards(gs, msg)
+
 		case "GOSSIP":
 			gs.FrotaMu.Lock()
 			for idDrone, estadoDrone := range msg.Frota {
